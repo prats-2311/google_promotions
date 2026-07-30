@@ -1,0 +1,50 @@
+@import "tailwindcss";
+@import "@fontsource/fraunces/400.css";
+@import "@fontsource/fraunces/500.css";
+@import "@fontsource/fraunces/600.css";
+@import "@fontsource/fraunces/400-italic.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+
+@theme {
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Cinema ops room: dark canvas shell, warm paper content surfaces. */
+  --color-canvas: #101014;
+  --color-canvas-raised: #17171d;
+  --color-canvas-line: #26262f;
+  --color-canvas-text: #ece9e2;
+  --color-canvas-muted: #8f8c9a;
+
+  --color-paper: #fbfaf7;
+  --color-paper-raised: #ffffff;
+  --color-ink: #14151a;
+  --color-ink-muted: rgba(20, 21, 26, 0.58);
+  --color-line: rgba(20, 21, 26, 0.1);
+
+  --color-gold: #d4a24e;
+  --color-gold-soft: #e8c98a;
+
+  /* Per-city accents — shared with the Cloud Run delight-card renderer. */
+  --color-mumbai: #c9622b;
+  --color-london: #2c4a63;
+  --color-tokyo: #8b3a52;
+  --color-saopaulo: #2f7d5a;
+  --color-newyork: #3a3f8f;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-canvas-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-gold);
+  color: var(--color-ink);
+}

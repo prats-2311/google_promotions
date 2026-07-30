@@ -1,0 +1,51 @@
+openapi: 3.0.0
+info:
+  title: Delight Card Renderer
+  description: Renders a finalized talent brief into a city delight card and uploads it to Cloud Storage.
+  version: "1.0.0"
+servers:
+  - url: https://delight-card-renderer-602700957663.us-central1.run.app
+
+paths:
+  /:
+    post:
+      operationId: renderDelightCard
+      summary: Render the final city delight card and return its public URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                brief_id: { type: string }
+                campaign_title: { type: string }
+                city_id: { type: string }
+                city_name: { type: string }
+                stop_date: { type: string }
+                enthusiasm_score: { type: number }
+                fan_behavior_style: { type: string }
+                grounding_check_passed: { type: boolean }
+                local_phrases:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      phrase: { type: string }
+                      meaning: { type: string }
+                talent_brief:
+                  type: object
+                  properties:
+                    lean_into: { type: array, items: { type: string } }
+                    avoid: { type: array, items: { type: string } }
+                    fan_questions: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Rendered card URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brief_id: { type: string }
+                  delight_card_url: { type: string }

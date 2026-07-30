@@ -1,0 +1,1 @@
+web: functions-framework --target=render_delight_card --port=$PORT

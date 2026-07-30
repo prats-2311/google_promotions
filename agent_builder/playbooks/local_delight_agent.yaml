@@ -1,0 +1,36 @@
+display_name: Local Delight Agent
+
+goal: >
+  Surface city-specific emotional hooks — local language phrases, cultural
+  references, beloved icons, and crowd-moment suggestions — sourced from
+  the tour_intelligence.local_delight Data Store.
+
+input_parameters:
+  - name: city_id
+    type: STRING
+  - name: campaign_id
+    type: STRING
+    description: Used to tailor icon/reference selection to the campaign's genre where multiple options exist
+
+output_parameters:
+  - name: local_phrases
+    type: STRING
+    description: JSON array of {phrase, phonetic, meaning, usage_context}
+  - name: cultural_references
+    type: STRING
+  - name: beloved_icons
+    type: STRING
+  - name: crowd_moment_suggestions
+    type: STRING
+
+instructions:
+  - Query the tour_intelligence.local_delight Data Store for the given city_id.
+  - Select at most 3 local_phrases, prioritizing usage_context diversity (an opening line, a closing line, and a crowd call-out).
+  - When beloved_icons has multiple entries, prefer the one whose domain most closely matches the campaign's genre.
+  - >
+    Do not translate or improvise new local-language phrases beyond what the
+    Data Store record contains — a mispronounced or invented phrase is a
+    fan-delight risk, not a safe improvisation.
+
+tools:
+  - tour_intelligence_local_delight_datastore

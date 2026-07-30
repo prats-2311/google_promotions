@@ -1,0 +1,48 @@
+display_name: Fan Enthusiasm Agent
+
+goal: >
+  Estimate the enthusiasm heat level and strategic importance tier for a
+  city given a campaign's genre and artist type, sourced from the
+  tour_intelligence.fan_signals Data Store and refined by the enthusiasm
+  scoring SDK function.
+
+input_parameters:
+  - name: city_id
+    type: STRING
+  - name: genre
+    type: STRING
+    description: Campaign genre (e.g. "sci-fi action")
+  - name: artist_type
+    type: STRING
+    description: film_cast, musician, or director
+
+output_parameters:
+  - name: enthusiasm_score
+    type: NUMBER
+    description: 0-100 composite enthusiasm score
+  - name: fan_behavior_style
+    type: STRING
+  - name: city_importance_tier
+    type: STRING
+  - name: genre_affinity_notes
+    type: STRING
+  - name: confidence_caveat
+    type: STRING
+    description: Explicit statement that this is a curated/estimated signal, not live social data
+
+instructions:
+  - Query the tour_intelligence.fan_signals Data Store for the given city_id, genre, and artist_type.
+  - >
+    Call the sdk_enthusiasm_scoring tool with the retrieved base signal to
+    produce the final enthusiasm_score, applying any campaign-specific
+    adjustments (e.g. a live-signal override, if one was supplied).
+  - >
+    Always populate confidence_caveat using the retrieved record's
+    signal_basis field verbatim — never omit it, per the platform's stated
+    data-realism scope. This is a deliberate, honest scope limit, not an
+    oversight.
+  - If no matching record exists for the city, return a low-confidence default rather than a fabricated score.
+
+tools:
+  - tour_intelligence_fan_signals_datastore
+  - sdk_enthusiasm_scoring

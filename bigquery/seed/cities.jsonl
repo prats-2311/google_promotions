@@ -1,0 +1,5 @@
+{"city_id":"mumbai","city_name":"Mumbai","country":"India","primary_language":"Hindi","timezone":"Asia/Kolkata","region":"South Asia"}
+{"city_id":"london","city_name":"London","country":"United Kingdom","primary_language":"English","timezone":"Europe/London","region":"Europe"}
+{"city_id":"tokyo","city_name":"Tokyo","country":"Japan","primary_language":"Japanese","timezone":"Asia/Tokyo","region":"East Asia"}
+{"city_id":"sao_paulo","city_name":"São Paulo","country":"Brazil","primary_language":"Portuguese","timezone":"America/Sao_Paulo","region":"South America"}
+{"city_id":"new_york","city_name":"New York","country":"United States","primary_language":"English","timezone":"America/New_York","region":"North America"}

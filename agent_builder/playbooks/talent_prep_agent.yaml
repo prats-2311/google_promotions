@@ -1,0 +1,58 @@
+display_name: Talent Prep Agent
+
+goal: >
+  Synthesize Culture Intelligence, Fan Enthusiasm, and Local Delight outputs
+  into a concise talent briefing card, then validate the draft with the
+  Culture Intelligence Agent's grounding check before marking it final. This
+  is the system's real two-way handoff — not a one-directional pipeline
+  step — since the draft is sent back for review before it can finalize.
+
+input_parameters:
+  - name: city_id
+    type: STRING
+  - name: campaign_id
+    type: STRING
+  - name: culture_summary
+    type: STRING
+  - name: enthusiasm_score
+    type: NUMBER
+  - name: local_delight_payload
+    type: STRING
+
+output_parameters:
+  - name: talent_brief_json
+    type: STRING
+    description: Final structured brief — lean-into topics, avoid list, pronounceable lines, high-probability fan questions
+  - name: grounding_check_passed
+    type: BOOLEAN
+  - name: status
+    type: STRING
+    description: draft, grounding_checked, or final
+  - name: delight_card_url
+    type: STRING
+    description: URL of the rendered delight card, populated once status = final
+
+instructions:
+  - >
+    Draft a talent_brief_json combining culture_summary, enthusiasm_score,
+    and local_delight_payload into topics to lean into, topics to avoid,
+    pronounceable local lines, and 3-5 high-probability fan questions.
+  - >
+    Set status to "draft" and invoke the culture_intelligence_agent playbook
+    with mode="grounding_check" and draft_brief set to the current
+    talent_brief_json.
+  - >
+    If grounding_check_passed is false, revise talent_brief_json to resolve
+    every issue in grounding_check_notes and re-invoke the grounding check.
+    Do not mark the brief final while any contradiction remains unresolved.
+  - >
+    Once grounding_check_passed is true, set status to "final", call the
+    render_delight_card Cloud Run tool with talent_brief_json to produce
+    delight_card_url, and return control to the campaign_orchestrator
+    playbook for persistence.
+
+tools:
+  - render_delight_card_cloud_run
+
+referenced_playbooks:
+  - culture_intelligence_agent

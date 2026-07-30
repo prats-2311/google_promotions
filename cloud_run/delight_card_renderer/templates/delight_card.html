@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>{{ city_name }} — Delight Card</title>
+<style>
+  :root {
+    --accent: {{ accent_color }};
+    --ink: #14151a;
+    --paper: #fbfaf7;
+    --line: rgba(20,21,26,0.10);
+    --muted: rgba(20,21,26,0.58);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #e9e7e1;
+    font-family: "Iowan Old Style", "Georgia", ui-serif, serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  .card {
+    width: 100%;
+    max-width: 620px;
+    background: var(--paper);
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 2px rgba(20,21,26,0.06), 0 24px 48px -24px rgba(20,21,26,0.35);
+    overflow: hidden;
+  }
+  .card__band {
+    height: 6px;
+    background: var(--accent);
+  }
+  .card__header {
+    padding: 32px 36px 20px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .card__eyebrow {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .card__city {
+    font-size: 34px;
+    margin: 0;
+    font-weight: 500;
+  }
+  .card__date {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: right;
+  }
+  .card__body {
+    padding: 8px 36px 32px;
+  }
+  .section {
+    padding: 20px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .section:last-child { border-bottom: none; padding-bottom: 0; }
+  .section__label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+    font-weight: 700;
+  }
+  .section__label svg { width: 14px; height: 14px; stroke: var(--accent); }
+  .phrase-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 0;
+    font-size: 15px;
+  }
+  .phrase-row__phrase { font-weight: 600; }
+  .phrase-row__meaning { color: var(--muted); font-style: italic; font-size: 13.5px; }
+  ul.plain { margin: 0; padding: 0; list-style: none; }
+  ul.plain li {
+    padding: 5px 0 5px 18px;
+    position: relative;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  ul.plain li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 13px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  ul.avoid li::before { background: #b3413a; }
+  .heat {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .heat__track {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--line);
+    overflow: hidden;
+  }
+  .heat__fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+  }
+  .heat__value {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    min-width: 34px;
+    text-align: right;
+  }
+  .card__footer {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.5px;
+    color: var(--muted);
+    padding: 16px 36px 24px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="card__band"></div>
+    <div class="card__header">
+      <div>
+        <p class="card__eyebrow">{{ campaign_title }} · City Delight Card</p>
+        <h1 class="card__city">{{ city_name }}</h1>
+      </div>
+      <div class="card__date">{{ stop_date }}</div>
+    </div>
+
+    <div class="card__body">
+      <div class="section">
+        <p class="section__label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 18v-6a9 9 0 0118 0v6"/><path d="M21 19a2 2 0 01-2 2h-1v-8h3z"/><path d="M3 19a2 2 0 002 2h1v-8H3z"/></svg>
+          Audience Energy
+        </p>
+        <div class="heat">
+          <div class="heat__track"><div class="heat__fill" style="width: {{ enthusiasm_score }}%;"></div></div>
+          <div class="heat__value">{{ enthusiasm_score }}</div>
+        </div>
+        <p style="margin: 10px 0 0; font-size: 13.5px; color: var(--muted);">{{ fan_behavior_style }}</p>
+      </div>
+
+      <div class="section">
+        <p class="section__label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Local Language Moment
+        </p>
+        {% for p in local_phrases %}
+        <div class="phrase-row">
+          <span class="phrase-row__phrase">{{ p.phrase }}</span>
+          <span class="phrase-row__meaning">{{ p.meaning }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="section">
+        <p class="section__label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
+          Lean Into
+        </p>
+        <ul class="plain">
+          {% for item in lean_into %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+
+      <div class="section">
+        <p class="section__label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          Avoid
+        </p>
+        <ul class="plain avoid">
+          {% for item in avoid_list %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      </div>
+
+      <div class="section">
+        <p class="section__label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 20l1.3-3.9A7.9 7.9 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Likely Fan Questions
+        </p>
+        <ul class="plain">
+          {% for q in fan_questions %}<li>{{ q }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="card__footer">
+      Generated by the Agentic Tour &amp; Promotion Intelligence OS · grounding check {{ "passed" if grounding_check_passed else "flagged for review" }}
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# google_promotions — Agentic Cinema Hackathon Submission
+
+## What this is
+A submission for **Agentic Cinema: The Blockbuster Hackathon** (Google Cloud + Devpost). The product concept is the **Agentic Tour & Promotion Intelligence OS** — a multi-agent system that generates city-specific cultural intelligence, fan-enthusiasm scoring, and localization guidance for entertainment press tours and music tours (e.g., a Mumbai stop where the artist should speak a few Hindi lines and reference a beloved local icon).
+
+Goal is not just a valid submission — the intent is to genuinely compete for placement, so architecture and scope decisions should be made against the hackathon's actual judging criteria, not just internal design taste.
+
+## Source-of-truth files
+- `agentic-tour-promo-intelligence.md` — the product concept, multi-agent design, MVP scope, UX screens, demo narrative. This is the primary working doc; it's been revised in place to close known gaps (see "Resolved gaps" below).
+- `devpost_google_hackathon_overview.md` — official hackathon rules snapshot (deadline, required tech stack, judging criteria, submission requirements). Re-verified and updated July 30, 2026 (prize pool $10K→$75K, all 5 partner tracks now announced) — re-verify again as the deadline approaches, since the judge panel is still "to be announced."
+- `ibm_partner.md` — IBM partner-track resources (no longer our chosen track — see below). Confirmed via direct doc research: **IBM Bob is a dev-time AI coding assistant/IDE, not a runtime API or MCP server.** The IBM track's requirement is process-level ("must be built using IBM Bob," pass/fail) not architectural. Confluent (Kafka) is optional, for real-time/event-driven flourishes.
+- `parallel_partner.md` — **our chosen partner track.** Parallel Search/Extract/Task/Monitor APIs for live web grounding, official Gemini Enterprise integration path, MCP server option. Track requirement: must actively call Parallel's Search API at runtime (not just reference it in docs).
+
+## Key hackathon constraints (from the source docs)
+- **Deadline:** September 8, 2026, 2:30 AM IST.
+- **Required stack:** Gemini + Google Cloud Agent Builder (Playbooks), Agent Builder Data Stores (BigQuery), Enterprise Agent Platform SDK (Python), Cloud Run, Secret Manager.
+- **Must integrate a partner track** to be eligible for prizes. **All 5 tracks are now announced (confirmed 2026-07-30): IBM, Grafana, Parallel, ClickHouse, Replit** — five identical prize buckets, $75,000 total, judged independently per track (was $10K/IBM-only as of July 28). Submission requires selecting exactly one.
+- **Judging criteria:** Technological Implementation, Design, Potential Impact, Quality of Idea.
+- **Production Goals judges look for:** agents that *act* (real tool calls, DB updates, triggered cloud functions) not just chat; genuine multi-agent handoffs, not a single-agent wrapper; grounded output with no hallucination in production-critical flows; Cloud IAM/security awareness.
+- **Submission deliverables:** hosted project URL, 3-minute demo video, public repo with license file, partner-track selection.
+
+## Current strategic decisions (already made — don't relitigate without new info)
+- **Partner track: Parallel** (decided 2026-07-30, superseding the earlier "defer to IBM" plan now that all 5 tracks are known). Rationale: our one honest, stated scope limit is curated/seeded data for only 5 demo cities. Parallel's Search/Extract APIs (via the documented Gemini Enterprise grounding integration) let Culture Intelligence and Fan Enthusiasm fetch live, real data for **any city on demand**, not just the seeded 5 — and the already-built `grounding_check.py` agent becomes more meaningful fact-checking live-fetched claims instead of static rows. Minimal architectural disruption: same Playbooks, same Cloud Run OpenAPI-tool pattern, one new tool. Grafana (observability/MCP) was the runner-up — stronger "studio-grade security" story but doesn't change what judges see in the product; ClickHouse and Replit were rejected as poor fits (ClickHouse duplicates the data layer against our deliberate strategy below; Replit requires rehosting the already-deployed Cloud Run/Dialogflow CX stack onto replit.app/dev). See `parallel_partner.md` for resource links and integration detail.
+- **MVP agent count: 5**, not 6. Culture Intelligence, Fan Enthusiasm, Local Delight, Talent Prep, and the Campaign Orchestrator are in the MVP. Promotion Architect is explicitly Phase 2/stretch.
+- **Primary persona: the campaign/marketing planner** (dashboard-first). The Mumbai talent-brief moment is the demo's emotional climax, reached *from* the dashboard — not the opening screen.
+- **Data strategy:** curated/seeded BigQuery tables remain the core for the 5 demo cities (fast, reliable, deterministic for the main demo path) — this is a deliberate, stated scope limit, not an oversight. **Addition (2026-07-30):** Parallel Search/Extract now provides a live "expand to any city" path layered on top, not a replacement — the seeded 5 stay the reliable backbone; Parallel-sourced data must still pass the same grounding check before being treated as canon.
+- **Action-driven design:** the Orchestrator writes finalized city briefs as real BigQuery records; Talent Prep triggers a Cloud Run function to render the final delight card. This is what makes the agents "act" rather than just generate text, per the Production Goals requirement above.
+- **Real inter-agent handoff:** Talent Prep sends its draft brief back to Culture Intelligence for a grounding check before finalizing — a genuine two-way dependency, not a strict one-way pipeline, which is what justifies calling this a "network." **This is now live and verified**, not just a design intent — see `agentic-tour-promo-intelligence.md`'s Technical Implementation Direction section for the architecture correction (native Data Store dropped in favor of a `tour_data_api` Cloud Run OpenAPI tool) and project memory for full provisioning detail.
+
+## Working style for this project
+- Be a proactive, creative problem-solver here, not just an analyst — the user's stated goal is to win, and stakes/deadline pressure mean momentum matters. Default toward concrete next actions (draft code, draft data schemas, draft the Agent Builder Playbook config) over more rounds of pure discussion once a decision has been made.
+- When a new hackathon detail surfaces (partner tracks, judge panel, rule clarifications), cross-check it against the three source docs above and flag contradictions explicitly rather than silently picking one.
+- Don't re-propose the Next.js/Node stack or a 6-agent MVP — both were deliberately superseded above.

@@ -1,0 +1,316 @@
+openapi: 3.0.0
+info:
+  title: Tour Intelligence Data API
+  description: >
+    Deterministic, parameterized lookups against the tour_intelligence
+    BigQuery dataset, plus the enthusiasm-scoring, city-ranking, and
+    grounding-check SDK tools. Used in place of a native Data Store tool
+    because these are exact-key structured lookups, not semantic search.
+  version: "1.0.0"
+servers:
+  - url: https://tour-data-api-602700957663.us-central1.run.app
+
+paths:
+  /culture_notes:
+    get:
+      operationId: getCultureNotes
+      summary: Cultural etiquette, greeting style, media behavior, and do/don't guidance for a city.
+      parameters:
+        - name: city_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Culture notes record for the city.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  etiquette_notes: { type: string }
+                  greeting_style: { type: string }
+                  media_behavior_notes: { type: string }
+                  fan_interaction_style: { type: string }
+                  dos: { type: array, items: { type: string } }
+                  donts: { type: array, items: { type: string } }
+                  humor_boundaries: { type: string }
+        "404":
+          description: No matching record for the given city_id.
+
+  /fan_signals:
+    get:
+      operationId: getFanSignals
+      summary: Enthusiasm score and strategic tier for a city, genre, and artist type.
+      parameters:
+        - name: city_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: genre
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: artist_type
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Fan signal record.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  genre: { type: string }
+                  artist_type: { type: string }
+                  enthusiasm_score: { type: number }
+                  fan_behavior_style: { type: string }
+                  city_importance_tier: { type: string }
+                  genre_affinity_notes: { type: string }
+                  signal_basis: { type: string }
+        "404":
+          description: No matching record for the given city_id/genre/artist_type.
+
+  /local_delight:
+    get:
+      operationId: getLocalDelight
+      summary: Local-language phrases, cultural references, beloved icons, and crowd-moment suggestions for a city.
+      parameters:
+        - name: city_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Local delight record.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  local_phrases:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        phrase: { type: string }
+                        phonetic: { type: string }
+                        meaning: { type: string }
+                        usage_context: { type: string }
+                  cultural_references: { type: array, items: { type: string } }
+                  beloved_icons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        domain: { type: string }
+                        reference_note: { type: string }
+                  crowd_moment_suggestions: { type: array, items: { type: string } }
+                  music_or_remix_ideas: { type: array, items: { type: string } }
+        "404":
+          description: No matching record for the given city_id.
+
+  /campaigns:
+    get:
+      operationId: getCampaign
+      summary: Campaign-level metadata — genre, campaign type, and talent roster — needed by the Fan Enthusiasm Agent.
+      parameters:
+        - name: campaign_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign record.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  title: { type: string }
+                  campaign_type: { type: string }
+                  genre: { type: string }
+                  talent_roster: { type: array, items: { type: string } }
+                  status: { type: string }
+        "404":
+          description: No matching record for the given campaign_id.
+
+  /campaign_stops:
+    get:
+      operationId: getCampaignStops
+      summary: Ordered list of city stops for a campaign, joined with city names.
+      parameters:
+        - name: campaign_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign stops in sequence order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  stops:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        city_id: { type: string }
+                        city_name: { type: string }
+                        stop_date: { type: string, format: date }
+                        sequence_order: { type: integer }
+                        event_format: { type: string, nullable: true }
+
+  /city_briefs:
+    post:
+      operationId: insertCityBrief
+      summary: Persist a finalized city brief as a real BigQuery row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [brief_id, campaign_id, city_id, status]
+              properties:
+                brief_id: { type: string }
+                campaign_id: { type: string }
+                city_id: { type: string }
+                generated_at: { type: string, format: date-time }
+                status: { type: string }
+                enthusiasm_score: { type: number }
+                culture_summary: { type: string }
+                local_delight_summary: { type: string }
+                talent_brief_json: { type: string }
+                grounding_check_passed: { type: boolean }
+                grounding_check_notes: { type: string }
+                delight_card_url: { type: string }
+      responses:
+        "200":
+          description: Insert confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brief_id: { type: string }
+                  status: { type: string }
+        "500":
+          description: Insert failed.
+
+  /score_enthusiasm:
+    post:
+      operationId: scoreEnthusiasm
+      summary: Blend a curated base enthusiasm signal with an optional live-signal override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_signal]
+              properties:
+                base_signal:
+                  type: object
+                  properties:
+                    enthusiasm_score: { type: number }
+                    fan_behavior_style: { type: string }
+                    city_importance_tier: { type: string }
+                    genre_affinity_notes: { type: string }
+                    signal_basis: { type: string }
+                live_signal_score: { type: number, nullable: true }
+                live_signal_weight: { type: number }
+      responses:
+        "200":
+          description: Final blended enthusiasm score and tier.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enthusiasm_score: { type: number }
+                  city_importance_tier: { type: string }
+                  fan_behavior_style: { type: string }
+                  genre_affinity_notes: { type: string }
+                  confidence_caveat: { type: string }
+                  used_live_signal: { type: boolean }
+
+  /rank_cities:
+    post:
+      operationId: rankCities
+      summary: Rank a campaign's cities by strategic value (tier, then enthusiasm score) for the Compare Cities screen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_records]
+              properties:
+                city_records:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      city_id: { type: string }
+                      enthusiasm_score: { type: number }
+                      city_importance_tier: { type: string }
+      responses:
+        "200":
+          description: Ranked list with strategic_rank assigned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ranked:
+                    type: array
+                    items:
+                      type: object
+
+  /check_grounding:
+    post:
+      operationId: checkGrounding
+      summary: Deterministic keyword-overlap backstop checking a draft brief against a city's don't list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [draft_brief_text, donts]
+              properties:
+                draft_brief_text: { type: string }
+                donts: { type: array, items: { type: string } }
+                humor_boundaries: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Grounding check result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grounding_check_passed: { type: boolean }
+                  grounding_check_notes: { type: string }
+                  flags:
+                    type: array
+                    items:
+                      type: object

@@ -1,0 +1,47 @@
+display_name: Campaign Orchestrator
+
+goal: >
+  Coordinate the Culture Intelligence, Fan Enthusiasm, Local Delight, and
+  Talent Prep agents for every city in a campaign, persist each finalized
+  brief as a real BigQuery record, and trigger delight-card rendering. This
+  is the layer that makes the system act rather than only chat.
+
+input_parameters:
+  - name: campaign_id
+    type: STRING
+
+output_parameters:
+  - name: city_brief_ids
+    type: STRING
+    description: JSON array of brief_id values written to tour_intelligence.city_briefs
+
+instructions:
+  - Read the campaign's stops from tour_intelligence.campaign_stops for the given campaign_id.
+  - >
+    For each city_id in the stops, invoke culture_intelligence_agent
+    (mode=generate), fan_enthusiasm_agent, and local_delight_agent, then pass
+    their outputs to talent_prep_agent.
+  - >
+    Wait for talent_prep_agent to return status="final" for the city (i.e.
+    its grounding-check loop with culture_intelligence_agent has already
+    resolved) before proceeding.
+  - >
+    Write one row per city into tour_intelligence.city_briefs with the final
+    talent_brief_json, enthusiasm_score, grounding_check_passed,
+    grounding_check_notes, and the delight_card_url returned by
+    talent_prep_agent. This is a real INSERT against the Data Store, not a
+    returned string.
+  - >
+    If any agent call fails or returns a low-confidence result, mark that
+    city's brief status as "needs_review" rather than silently proceeding as
+    if it were final.
+
+tools:
+  - tour_intelligence_city_briefs_datastore
+  - sdk_city_ranking
+
+referenced_playbooks:
+  - culture_intelligence_agent
+  - fan_enthusiasm_agent
+  - local_delight_agent
+  - talent_prep_agent
