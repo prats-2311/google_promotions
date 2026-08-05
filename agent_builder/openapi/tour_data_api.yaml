@@ -40,6 +40,54 @@ paths:
         "404":
           description: No matching record for the given city_id.
 
+  /live_culture_search:
+    post:
+      operationId: liveCultureSearch
+      summary: >
+        Fallback for a city with no culture_notes row. Calls Parallel's live
+        Search API and synthesizes the results (Gemini, schema-constrained)
+        into the same shape getCultureNotes returns, marked source=parallel_live
+        with citations. Stays conservative/general when live results are thin
+        rather than inventing specifics — must still pass checkGrounding
+        before a brief treats it as canon, same as seeded-data output.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_name]
+              properties:
+                city_name: { type: string }
+                country: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Live-grounded culture guidance for the city.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  source: { type: string }
+                  confidence: { type: string }
+                  etiquette_notes: { type: string, nullable: true }
+                  greeting_style: { type: string, nullable: true }
+                  media_behavior_notes: { type: string, nullable: true }
+                  fan_interaction_style: { type: string, nullable: true }
+                  dos: { type: array, items: { type: string } }
+                  donts: { type: array, items: { type: string } }
+                  humor_boundaries: { type: string, nullable: true }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+        "500":
+          description: Parallel Search or Gemini synthesis call failed.
+
   /fan_signals:
     get:
       operationId: getFanSignals
@@ -121,6 +169,66 @@ paths:
         "404":
           description: No matching record for the given city_id.
 
+  /live_local_delight_search:
+    post:
+      operationId: liveLocalDelightSearch
+      summary: >
+        Fallback for a city with no local_delight row. Mirrors
+        liveCultureSearch: calls Parallel's live Search API and synthesizes
+        results (Gemini, schema-constrained) into the same shape
+        getLocalDelight returns, marked source=parallel_live with citations.
+        beloved_icons.name is always generic, never a named real person.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_name]
+              properties:
+                city_name: { type: string }
+                country: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Live-grounded local delight guidance for the city.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  source: { type: string }
+                  confidence: { type: string }
+                  local_phrases:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        phrase: { type: string }
+                        phonetic: { type: string }
+                        meaning: { type: string }
+                        usage_context: { type: string }
+                  cultural_references: { type: array, items: { type: string } }
+                  beloved_icons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        domain: { type: string }
+                        reference_note: { type: string }
+                  crowd_moment_suggestions: { type: array, items: { type: string } }
+                  music_or_remix_ideas: { type: array, items: { type: string } }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+        "500":
+          description: Parallel Search or Gemini synthesis call failed.
+
   /campaigns:
     get:
       operationId: getCampaign
@@ -147,6 +255,59 @@ paths:
                   status: { type: string }
         "404":
           description: No matching record for the given campaign_id.
+    post:
+      operationId: createCampaign
+      summary: Create a new campaign. Used by the dashboard's "New Campaign" flow — not currently called by any Playbook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, title, campaign_type, genre]
+              properties:
+                campaign_id: { type: string }
+                title: { type: string }
+                campaign_type: { type: string }
+                genre: { type: string }
+                talent_roster: { type: array, items: { type: string } }
+                status: { type: string }
+      responses:
+        "200":
+          description: Insert confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  status: { type: string }
+        "500":
+          description: Insert failed.
+
+  /campaigns_list:
+    get:
+      operationId: listCampaigns
+      summary: All campaigns, most recently created first. Used by the dashboard's campaign switcher — not currently called by any Playbook.
+      responses:
+        "200":
+          description: All campaign records.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        campaign_id: { type: string }
+                        title: { type: string }
+                        campaign_type: { type: string }
+                        genre: { type: string }
+                        talent_roster: { type: array, items: { type: string } }
+                        status: { type: string }
 
   /campaign_stops:
     get:
@@ -177,6 +338,47 @@ paths:
                         stop_date: { type: string, format: date }
                         sequence_order: { type: integer }
                         event_format: { type: string, nullable: true }
+    post:
+      operationId: createCampaignStops
+      summary: >
+        Add city stops to a campaign. Used by the dashboard's "New Campaign"
+        flow — not currently called by any Playbook. city_id is restricted to
+        the cities with full seeded coverage (mumbai, london, tokyo,
+        sao_paulo, new_york) since fan_signals has no live-search fallback.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, stops]
+              properties:
+                campaign_id: { type: string }
+                stops:
+                  type: array
+                  items:
+                    type: object
+                    required: [city_id]
+                    properties:
+                      city_id: { type: string }
+                      stop_date: { type: string, format: date }
+                      sequence_order: { type: integer }
+                      event_format: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Insert confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  status: { type: string }
+                  count: { type: integer }
+        "400":
+          description: Missing fields or an unsupported city_id.
+        "500":
+          description: Insert failed.
 
   /city_briefs:
     post:

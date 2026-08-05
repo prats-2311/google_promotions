@@ -188,6 +188,17 @@ def _synthesize_draft_brief(city_name: str, collected: dict, revision_notes: str
     return "\n".join(texts)
 
 
+def _live_culture_search_direct(city_name: str, identity_token: str) -> dict:
+    resp = requests.post(
+        f"{TOUR_DATA_API}/live_culture_search",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        json={"city_name": city_name},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 def _check_grounding_direct(draft_brief_text: str, donts: list[str], humor_boundaries: str | None, identity_token: str) -> dict:
     resp = requests.post(
         f"{TOUR_DATA_API}/check_grounding",
@@ -243,8 +254,19 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
         actions = _actions(resp)
 
         cn = _tool_output(actions, "getCultureNotes")
-        if cn:
+        if cn and "error" not in cn:
             collected["culture_notes"] = cn
+        elif cn and "error" in cn and "culture_notes" not in collected:
+            # No seeded record for this city. The Playbook's own conversational
+            # fallback (getCultureNotes 404 -> liveCultureSearch, same turn) exceeds
+            # the per-turn nested-tool-call budget in practice, so — same "LLM
+            # reasons, code acts" split already used for brief synthesis below —
+            # call the live Parallel-Search-grounded route directly via HTTP instead
+            # of chasing a second conversational tool call.
+            live = _live_culture_search_direct(city_name, _gcloud_token("identity"))
+            if live and "error" not in live:
+                collected["culture_notes"] = live
+                print(f"[{city_id}] no seeded culture_notes — used live_culture_search fallback (confidence={live.get('confidence')})")
         ci = _playbook_output(actions, "Culture Intelligence Agent")
         if ci and ci.get("culture_summary"):
             collected["culture_summary"] = ci["culture_summary"]
