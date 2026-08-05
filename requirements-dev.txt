@@ -1,0 +1,13 @@
+# Combined dev/test dependencies for running the full pytest suite locally
+# across sdk/, cloud_run/tour_data_api, cloud_run/delight_card_renderer, and
+# orchestration_driver. Not deployed anywhere — each Cloud Run service has
+# its own slim requirements.txt for production. See run_tests.sh.
+pytest==9.*
+pytest-mock==3.*
+flask==3.*
+functions-framework==3.*
+google-cloud-bigquery==3.*
+google-cloud-storage==3.*
+jinja2==3.*
+parallel-web>=1.0.1
+requests==2.*
