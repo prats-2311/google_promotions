@@ -23,6 +23,7 @@ import { ThinkingTrace } from "../components/ThinkingTrace";
 import { deriveTrace } from "../lib/deriveTrace";
 import { useCampaignContext } from "../lib/campaignContext";
 import { CityDetailSkeleton } from "../components/ui/Skeletons";
+import { Accordion } from "../components/ui/Accordion";
 
 const TABS = ["intelligence", "delight", "brief"] as const;
 type Tab = (typeof TABS)[number];
@@ -165,14 +166,16 @@ function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) 
 
           <div className="mt-6">
             <SectionLabel icon={Landmark} accent={accent} label="Beloved Icons &amp; References" />
-            <ul className="mt-2 space-y-2.5">
-              {localDelight.beloved_icons.map((icon, i) => (
-                <li key={i} className="font-sans text-[13px] text-ink">
-                  <span className="font-medium">{icon.name}</span>
-                  <span className="block text-[12px] italic text-ink-muted">{icon.reference_note}</span>
-                </li>
-              ))}
-            </ul>
+            <Accordion
+              className="mt-1"
+              accent={accent}
+              type="multiple"
+              items={localDelight.beloved_icons.map((icon, i) => ({
+                id: `${icon.name}-${i}`,
+                title: icon.name,
+                content: icon.reference_note,
+              }))}
+            />
           </div>
         </div>
       </div>
