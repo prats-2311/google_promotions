@@ -21,8 +21,9 @@ import type { CityDetail as CityDetailData, TalentBrief } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
 import { ThinkingTrace } from "../components/ThinkingTrace";
 import { deriveTrace } from "../lib/deriveTrace";
+import { useCampaignContext } from "../lib/campaignContext";
+import { CityDetailSkeleton } from "../components/ui/Skeletons";
 
-const CAMPAIGN_ID = "nova_horizon_2026";
 const TABS = ["intelligence", "delight", "brief"] as const;
 type Tab = (typeof TABS)[number];
 
@@ -38,15 +39,16 @@ function normalizeLine(line: string | { phrase: string; meaning?: string }) {
 
 export function CityDetail() {
   const { cityId = "" } = useParams();
+  const { activeCampaignId } = useCampaignContext();
   const [data, setData] = useState<CityDetailData | null>(null);
   const [tab, setTab] = useState<Tab>("delight");
 
   useEffect(() => {
     setData(null);
-    getCityDetail(CAMPAIGN_ID, cityId).then(setData);
-  }, [cityId]);
+    getCityDetail(activeCampaignId, cityId).then(setData);
+  }, [activeCampaignId, cityId]);
 
-  if (!data) return <p className="font-sans text-[13px] text-canvas-muted">Loading city intelligence…</p>;
+  if (!data) return <CityDetailSkeleton />;
 
   const accent = cityAccent(cityId);
   const accentPaper = cityAccentOnPaper(cityId);

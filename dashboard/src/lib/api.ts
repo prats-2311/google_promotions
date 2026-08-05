@@ -1,4 +1,4 @@
-import type { CampaignOverview, CityDetail } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, NewCampaignInput } from "./types";
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -8,6 +8,20 @@ async function getJson<T>(path: string): Promise<T> {
 
 export function getCampaignOverview(campaignId: string) {
   return getJson<CampaignOverview>(`/api/campaigns/${campaignId}/overview`);
+}
+
+export function listCampaigns() {
+  return getJson<{ campaigns: Campaign[] }>("/api/campaigns");
+}
+
+export async function createCampaign(input: NewCampaignInput) {
+  const res = await fetch("/api/campaigns", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`create campaign failed: ${res.status}`);
+  return res.json() as Promise<{ campaign_id: string; status: string }>;
 }
 
 export function getCityDetail(campaignId: string, cityId: string) {

@@ -59,9 +59,63 @@ function artistTypeFor(campaignType) {
   return campaignType === "music_world_tour" ? "musician" : "film_cast";
 }
 
+function slugify(text) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.get("/api/campaigns", async (req, res) => {
+  try {
+    const result = await callTool("/campaigns_list");
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/campaigns", async (req, res) => {
+  try {
+    const { title, campaign_type, genre, talent_roster, stops } = req.body;
+    if (!title || !campaign_type || !genre || !Array.isArray(stops) || stops.length === 0) {
+      res.status(400).json({ error: "title, campaign_type, genre, and at least one stop are required" });
+      return;
+    }
+
+    const campaignId = `${slugify(title)}_${Date.now().toString(36)}`;
+
+    await callTool("/campaigns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaign_id: campaignId,
+        title,
+        campaign_type,
+        genre,
+        talent_roster: talent_roster || [],
+      }),
+    });
+
+    await callTool("/campaign_stops", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaign_id: campaignId,
+        stops: stops.map((s, i) => ({ ...s, sequence_order: i + 1 })),
+      }),
+    });
+
+    res.json({ campaign_id: campaignId, status: "created" });
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
 
 app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
   try {
@@ -146,9 +200,26 @@ app.post("/api/rank-cities", async (req, res) => {
 });
 
 // Production: serve the built frontend and let client-side routing handle the rest.
+// Vite's hashed asset filenames (index-<hash>.js/css) are safe to cache forever —
+// a new deploy always produces new hashes. index.html is not: it's the only thing
+// pointing at those hashes, so a browser tab left open across a redeploy must
+// always refetch it, or it'll reference asset files that no longer exist (Express's
+// catch-all below would then silently serve index.html *as* the missing asset,
+// producing a blank unstyled page instead of an honest 404 — this happened for
+// real during 2026-08-05 verification, caught via a stale cached tab).
 const distDir = path.join(__dirname, "..", "dist");
-app.use(express.static(distDir));
+app.use(
+  express.static(distDir, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (path.basename(filePath) !== "index.html") {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    },
+  })
+);
 app.get(/(.*)/, (_req, res) => {
+  res.setHeader("Cache-Control", "no-cache");
   res.sendFile(path.join(distDir, "index.html"));
 });
 

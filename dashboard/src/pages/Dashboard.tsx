@@ -6,19 +6,22 @@ import { getCampaignOverview } from "../lib/api";
 import type { CampaignOverview } from "../lib/types";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
-
-const CAMPAIGN_ID = "nova_horizon_2026";
+import { useCampaignContext } from "../lib/campaignContext";
+import { DashboardSkeleton } from "../components/ui/Skeletons";
 
 export function Dashboard() {
+  const { activeCampaignId } = useCampaignContext();
   const [data, setData] = useState<CampaignOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getCampaignOverview(CAMPAIGN_ID).then(setData).catch((e) => setError(String(e)));
-  }, []);
+    setData(null);
+    setError(null);
+    getCampaignOverview(activeCampaignId).then(setData).catch((e) => setError(String(e)));
+  }, [activeCampaignId]);
 
   if (error) return <ErrorState message={error} />;
-  if (!data) return <LoadingState />;
+  if (!data) return <DashboardSkeleton />;
 
   const finalCount = data.cities.filter((c) => c.status === "final").length;
 
@@ -87,10 +90,6 @@ export function Dashboard() {
       </div>
     </div>
   );
-}
-
-function LoadingState() {
-  return <p className="font-sans text-[13px] text-canvas-muted">Loading campaign…</p>;
 }
 
 function ErrorState({ message }: { message: string }) {

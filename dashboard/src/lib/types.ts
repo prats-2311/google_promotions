@@ -107,3 +107,17 @@ export interface TraceStep {
   label: string;
   detail?: string;
 }
+
+export interface NewCampaignStopInput {
+  city_id: string;
+  stop_date: string;
+  event_format?: string | null;
+}
+
+export interface NewCampaignInput {
+  title: string;
+  campaign_type: string;
+  genre: string;
+  talent_roster: string[];
+  stops: NewCampaignStopInput[];
+}

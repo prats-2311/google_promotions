@@ -5,8 +5,8 @@ import { Table2, BarChart3 } from "lucide-react";
 import { getCampaignOverview, rankCities } from "../lib/api";
 import type { CampaignOverview } from "../lib/types";
 import { cityAccentOnPaper } from "../lib/cityTheme";
-
-const CAMPAIGN_ID = "nova_horizon_2026";
+import { useCampaignContext } from "../lib/campaignContext";
+import { CompareCitiesSkeleton } from "../components/ui/Skeletons";
 
 interface RankedCity {
   city_id: string;
@@ -17,31 +17,45 @@ interface RankedCity {
 }
 
 export function CompareCities() {
+  const { activeCampaignId } = useCampaignContext();
   const [overview, setOverview] = useState<CampaignOverview | null>(null);
   const [ranked, setRanked] = useState<RankedCity[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"chart" | "table">("chart");
   const [hovered, setHovered] = useState<string | null>(null);
 
   useEffect(() => {
-    getCampaignOverview(CAMPAIGN_ID).then(async (data) => {
-      setOverview(data);
-      // Need each city's tier — the overview doesn't carry it, so pull it from
-      // the tier already known per-city via a lightweight re-fetch isn't
-      // available here; approximate tier bucket from score for ranking input
-      // is wrong — instead call rank_cities with what we have plus a tier
-      // derived the same way the SDK does server-side as a fallback.
-      const records = data.cities.map((c) => ({
-        city_id: c.city_id,
-        enthusiasm_score: c.enthusiasm_score ?? 0,
-        city_importance_tier: tierFromScore(c.enthusiasm_score ?? 0),
-      }));
-      const result = await rankCities(records);
-      const byId = Object.fromEntries(data.cities.map((c) => [c.city_id, c.city_name]));
-      setRanked(result.ranked.map((r) => ({ ...r, city_name: byId[r.city_id] })));
-    });
-  }, []);
+    setOverview(null);
+    setRanked(null);
+    setError(null);
+    getCampaignOverview(activeCampaignId)
+      .then(async (data) => {
+        setOverview(data);
+        // Need each city's tier — the overview doesn't carry it, so pull it from
+        // the tier already known per-city via a lightweight re-fetch isn't
+        // available here; approximate tier bucket from score for ranking input
+        // is wrong — instead call rank_cities with what we have plus a tier
+        // derived the same way the SDK does server-side as a fallback.
+        const records = data.cities.map((c) => ({
+          city_id: c.city_id,
+          enthusiasm_score: c.enthusiasm_score ?? 0,
+          city_importance_tier: tierFromScore(c.enthusiasm_score ?? 0),
+        }));
+        const result = await rankCities(records);
+        const byId = Object.fromEntries(data.cities.map((c) => [c.city_id, c.city_name]));
+        setRanked(result.ranked.map((r) => ({ ...r, city_name: byId[r.city_id] })));
+      })
+      .catch((e) => setError(String(e)));
+  }, [activeCampaignId]);
 
-  if (!overview || !ranked) return <p className="font-sans text-[13px] text-canvas-muted">Loading comparison…</p>;
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-900/30 bg-red-950/20 px-4 py-3 font-sans text-[13px] text-red-200">
+        Couldn't load the comparison: {error}
+      </div>
+    );
+  }
+  if (!overview || !ranked) return <CompareCitiesSkeleton />;
 
   const maxScore = Math.max(...ranked.map((r) => r.enthusiasm_score), 1);
 
