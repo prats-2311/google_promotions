@@ -4,10 +4,10 @@
 
 **Hosted by:** Google Cloud + Devpost  
 **Status:** Open for submissions  
-**Deadline:** September 8, 2026 @ 2:30 AM IST  
+**Deadline:** September 8, 2026 @ 2:30 AM IST (Sept 7, 2026 21:00 UTC)  
 **Participants:** 1,421+ (as of July 2026)  
 **Format:** Online, Public  
-**Source:** [https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/)
+**Source:** [https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/) — key facts re-verified live via Devpost API 2026-08-03
 
 ---
 
@@ -34,9 +34,9 @@ The hackathon is themed around the movie industry — you're not just writing co
 ## ✅ Eligibility
 
 - Must be **above the legal age of majority** in your country of residence
-- Some **countries/territories are excluded** — check the [full rules](https://agentic-cinema.devpost.com/rules)
-- **Team size:** Maximum 4 eligible individuals
-- You can participate solo or as a team
+- **Team size:** Maximum 4 members (submission form asks "How many people total are on your team?")
+- You can participate solo or as a team — no company/organization requirement
+- **Excluded countries/territories** (verified 2026-08-03 via live Devpost API — **India is not on this list**): Afghanistan, Antarctica, Belarus, Brazil, China, Crimea, Cuba, Djibouti, Donetsk People's Republic, Iran, Iraq, Italy, Kazakhstan, North Korea, Luhansk People's Republic, Quebec, Russia, Somalia, Sudan, Syria, Venezuela, Vietnam, Western Sahara
 
 ---
 
@@ -132,10 +132,21 @@ Don't waste time setting up a local IDE. Use the **built-in Console Emulator** i
 To submit a valid project, you must provide:
 
 - [ ] URL to the **hosted project**
-- [ ] A **3-minute demo video** ("The Trailer")
-- [ ] URL to a **public open-source code repository** (must include an open-source license file visible in the About section)
+- [ ] A **3-minute demo video** ("The Trailer") — showing the project functioning as built, not a cinematic trailer; YouTube or Vimeo, publicly visible, English or English subtitles
+- [ ] URL to a **public open-source code repository** — must contain all source code/assets/run instructions, and must demonstrate **actual runtime use** of Google Cloud and the chosen Partner's service (imported and called in code — not just named in the README)
+- [ ] The repo's license must be **auto-detectable by GitHub and visible in the About section** (not just a LICENSE file present) — worth a visual check once pushed
 - [ ] Selection of which **partner track** you're submitting to
 - [ ] Completed **Devpost submission form**
+
+**Submission form fields confirmed live (2026-08-03) — beyond the checklist above:**
+- Submitter type (Individual/Team/Org), country of residence, org name (N/A if none)
+- Government-employee disclosure
+- **"Is your project new or existing prior to July 27, 2026?"** — our honest answer is **New** (work began 2026-07-28 per project memory)
+- Team size (max 4)
+- Which Google Cloud products were used (free text)
+- Which other tools/products were used (free text)
+- **A separate "first time using X tools?" dropdown for all 5 partners** (not just your chosen one) — answer Parallel honestly, mark the other four "N/A, not submitting to that track"
+- Optional checkbox to share contact details with IBM for marketing (opt-in, unrelated to track choice)
 
 🔗 [Submit your project](https://devpost.com/submit-to/30721-agentic-cinema-the-blockbuster-hackathon/manage/submissions)
 
@@ -150,7 +161,7 @@ To submit a valid project, you must provide:
 | 🌍 **Potential Impact** | Does it make a credible case for solving a real problem for a real audience? |
 | 💡 **Quality of the Idea** | Is this a creative, non-obvious use of Google Cloud and Partner services? Does the team understand the problem space? |
 
-> Full judge panel to be announced soon.
+> Full judge panel to be announced soon. Criterion #4 is officially titled "Quality of the Idea" (verified 2026-08-03 via live Devpost API — cosmetic naming difference only from earlier "Quality of Idea" phrasing).
 
 ---
 
@@ -172,11 +183,16 @@ To submit a valid project, you must provide:
 
 ## 📅 Key Dates
 
+All verified live against the Devpost API on 2026-08-03 (UTC timestamps converted below):
+
 | Event | Date |
 |---|---|
-| Hackathon Active | Now |
-| **Submission Deadline** | **September 8, 2026 @ 2:30 AM IST** |
-| Days Remaining | ~41 days (as of July 28, 2026) |
+| Submissions opened | July 27, 2026 |
+| **Submission Deadline** | **September 8, 2026 @ 2:30 AM IST** (Sept 7, 2026 21:00 UTC / 2:00 PM Pacific) |
+| Judging period | September 23 – October 7, 2026 (19:00 UTC / 12:00 PM Pacific start & end) |
+| **Winners announced** | **October 12, 2026** (19:00 UTC / 12:00 PM Pacific) |
+| $100 GCP credit form deadline | Must be requested & redeemed before **August 31, 2026** |
+| Days Remaining to submit | ~36 days (as of August 3, 2026) |
 
 🔗 [Full schedule](https://agentic-cinema.devpost.com/details/dates)
 
@@ -205,4 +221,4 @@ To submit a valid project, you must provide:
 
 ---
 
-> *Last updated: July 30, 2026 | Source: [https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/)*
+> *Last updated: August 3, 2026 | Source: [https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/), verified live via the Devpost MCP API (overview, key dates, prizes, judging criteria, submission requirements, eligibility, announcements)*
