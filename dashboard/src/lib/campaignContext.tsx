@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { listCampaigns } from "./api";
 import type { Campaign } from "./types";
 
@@ -16,20 +17,18 @@ interface CampaignContextValue {
 const CampaignContext = createContext<CampaignContextValue | null>(null);
 
 export function CampaignProvider({ children }: { children: ReactNode }) {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [activeCampaignId, setActiveCampaignIdState] = useState(
     () => localStorage.getItem(STORAGE_KEY) || DEFAULT_CAMPAIGN_ID
   );
 
+  const { data, refetch } = useQuery({
+    queryKey: ["campaigns"],
+    queryFn: listCampaigns,
+  });
+  const campaigns = data?.campaigns ?? [];
   const refresh = useCallback(() => {
-    listCampaigns()
-      .then((data) => setCampaigns(data.campaigns))
-      .catch(() => setCampaigns([]));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refetch();
+  }, [refetch]);
 
   const setActiveCampaignId = useCallback((id: string) => {
     localStorage.setItem(STORAGE_KEY, id);

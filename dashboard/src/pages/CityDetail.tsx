@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Check,
@@ -15,15 +16,34 @@ import {
   MessageCircleQuestion,
   Mic2,
   ExternalLink,
+  Wrench,
+  GitBranch,
+  MessageCircle,
 } from "lucide-react";
 import { getCityDetail } from "../lib/api";
-import type { CityDetail as CityDetailData, TalentBrief } from "../lib/types";
+import type { CityDetail as CityDetailData, TalentBrief, TraceStep } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
-import { ThinkingTrace } from "../components/ThinkingTrace";
+import { AgentPlanning, type PlanStep } from "../components/ui/agent-planning";
 import { deriveTrace } from "../lib/deriveTrace";
 import { useCampaignContext } from "../lib/campaignContext";
 import { CityDetailSkeleton } from "../components/ui/Skeletons";
 import { Accordion } from "../components/ui/Accordion";
+
+const TRACE_ICON_BY_KIND: Record<TraceStep["kind"], React.ReactNode> = {
+  tool: <Wrench className="w-3.5 h-3.5" />,
+  playbook: <GitBranch className="w-3.5 h-3.5" />,
+  utterance: <MessageCircle className="w-3.5 h-3.5" />,
+};
+
+function toPlanSteps(steps: TraceStep[]): PlanStep[] {
+  return steps.map((step, i) => ({
+    id: `${i}-${step.label}`,
+    title: step.label,
+    status: "success",
+    icon: TRACE_ICON_BY_KIND[step.kind],
+    content: step.detail ? <p>{step.detail}</p> : undefined,
+  }));
+}
 
 const TABS = ["intelligence", "delight", "brief"] as const;
 type Tab = (typeof TABS)[number];
@@ -41,13 +61,11 @@ function normalizeLine(line: string | { phrase: string; meaning?: string }) {
 export function CityDetail() {
   const { cityId = "" } = useParams();
   const { activeCampaignId } = useCampaignContext();
-  const [data, setData] = useState<CityDetailData | null>(null);
+  const { data } = useQuery({
+    queryKey: ["cityDetail", activeCampaignId, cityId],
+    queryFn: () => getCityDetail(activeCampaignId, cityId),
+  });
   const [tab, setTab] = useState<Tab>("delight");
-
-  useEffect(() => {
-    setData(null);
-    getCityDetail(activeCampaignId, cityId).then(setData);
-  }, [activeCampaignId, cityId]);
 
   if (!data) return <CityDetailSkeleton />;
 
@@ -78,7 +96,7 @@ export function CityDetail() {
 
       {data.brief && (
         <div className="mb-6">
-          <ThinkingTrace steps={deriveTrace(data)} />
+          <AgentPlanning title="How this brief was generated" steps={toPlanSteps(deriveTrace(data))} defaultExpanded={false} />
         </div>
       )}
 

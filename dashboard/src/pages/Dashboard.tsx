@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Clock, MapPin } from "lucide-react";
 import { getCampaignOverview } from "../lib/api";
-import type { CampaignOverview } from "../lib/types";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
 import { useCampaignContext } from "../lib/campaignContext";
@@ -11,16 +10,12 @@ import { DashboardSkeleton } from "../components/ui/Skeletons";
 
 export function Dashboard() {
   const { activeCampaignId } = useCampaignContext();
-  const [data, setData] = useState<CampaignOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data, error } = useQuery({
+    queryKey: ["campaignOverview", activeCampaignId],
+    queryFn: () => getCampaignOverview(activeCampaignId),
+  });
 
-  useEffect(() => {
-    setData(null);
-    setError(null);
-    getCampaignOverview(activeCampaignId).then(setData).catch((e) => setError(String(e)));
-  }, [activeCampaignId]);
-
-  if (error) return <ErrorState message={error} />;
+  if (error) return <ErrorState message={String(error)} />;
   if (!data) return <DashboardSkeleton />;
 
   const finalCount = data.cities.filter((c) => c.status === "final").length;
