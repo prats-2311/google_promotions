@@ -5,6 +5,7 @@ export interface Campaign {
   genre: string;
   talent_roster: string[];
   status: string;
+  selected_metrics: string[];
 }
 
 export interface CampaignStop {
@@ -91,6 +92,21 @@ export interface CityBrief {
   grounding_check_passed: boolean | null;
   grounding_check_notes: string | null;
   delight_card_url: string | null;
+  demographic_snapshot_json: string | null;
+}
+
+export interface DemographicSnapshot {
+  city_id?: string;
+  source?: string;
+  confidence?: "high" | "medium" | "low";
+  literacy_rate: number | null;
+  median_age: number | null;
+  population: number | null;
+  median_household_income_usd: number | null;
+  internet_penetration_rate: number | null;
+  dominant_social_platforms: string[];
+  top_interest_categories: string[];
+  notable_public_holidays: string[];
 }
 
 export interface CityDetail {
@@ -100,6 +116,7 @@ export interface CityDetail {
   localDelight: LocalDelight;
   fanSignal: FanSignal | null;
   brief: CityBrief | null;
+  demographicSnapshot: DemographicSnapshot | null;
 }
 
 export interface TraceStep {
@@ -120,4 +137,24 @@ export interface NewCampaignInput {
   genre: string;
   talent_roster: string[];
   stops: NewCampaignStopInput[];
+  selected_metrics: string[];
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface SuggestedCampaign {
+  title: string;
+  campaign_type: string;
+  genre: string;
+  talent_roster: string[];
+  stops: NewCampaignStopInput[];
+}
+
+export interface StrategyChatResponse {
+  reply: string;
+  ready: boolean;
+  suggested_campaign: SuggestedCampaign | null;
 }

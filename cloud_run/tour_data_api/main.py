@@ -153,6 +153,30 @@ def _local_delight_search(city_name: str, country: str | None) -> list[dict]:
     ]
 
 
+def _demographics_search(city_name: str, country: str | None) -> list[dict]:
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    place = f"{city_name}, {country}" if country else city_name
+    search = _parallel_client.search(
+        objective=(
+            f"Literacy rate, population, median age, median household income, "
+            f"internet/social-media usage, top entertainment interests, and "
+            f"notable public holidays for {place}, from authoritative public "
+            f"sources (census, government, or widely-cited statistics sites)."
+        ),
+        search_queries=[
+            f"{place} literacy rate population",
+            f"{place} median household income",
+            f"{place} social media usage interests",
+        ],
+        mode="advanced",
+    )
+    return [
+        {"url": r.url, "title": r.title, "excerpts": r.excerpts}
+        for r in search.results
+    ]
+
+
 def _call_gemini_json(prompt: str, response_schema: dict) -> dict:
     url = (
         f"https://{_VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
@@ -485,13 +509,144 @@ def live_local_delight_search():
     })
 
 
+@app.get("/city_demographics")
+def city_demographics():
+    city_id = request.args.get("city_id")
+    if not city_id:
+        return jsonify({"error": "missing required query param: city_id"}), 400
+    rows = _query(
+        f"SELECT city_id, literacy_rate, median_age, population, "
+        f"median_household_income_usd, internet_penetration_rate, "
+        f"dominant_social_platforms, top_interest_categories, notable_public_holidays "
+        f"FROM `{_DATASET}.city_demographics` WHERE city_id = @city_id",
+        [bigquery.ScalarQueryParameter("city_id", "STRING", city_id)],
+    )
+    if not rows:
+        return jsonify({"error": f"no city_demographics record for city_id={city_id}"}), 404
+    r = rows[0]
+    return jsonify({
+        "city_id": r["city_id"],
+        "literacy_rate": r["literacy_rate"],
+        "median_age": r["median_age"],
+        "population": r["population"],
+        "median_household_income_usd": r["median_household_income_usd"],
+        "internet_penetration_rate": r["internet_penetration_rate"],
+        "dominant_social_platforms": list(r["dominant_social_platforms"] or []),
+        "top_interest_categories": list(r["top_interest_categories"] or []),
+        "notable_public_holidays": list(r["notable_public_holidays"] or []),
+    })
+
+
+@app.post("/live_city_demographics_search")
+def live_city_demographics_search():
+    """Fallback for cities with no tour_intelligence.city_demographics row.
+
+    Mirrors /live_culture_search's pattern exactly, for quantitative facts
+    (literacy, income, population, top interests) instead of etiquette
+    guidance -- Parallel Search for live grounding excerpts, then a single
+    schema-constrained Gemini call synthesizes them into the same shape
+    /city_demographics returns for seeded cities. Numeric facts sometimes
+    have sources that disagree by year/methodology -- the prompt instructs
+    Gemini to say so and mark confidence low rather than pick one arbitrarily,
+    the same honesty discipline the other two live-search routes already use.
+    """
+    payload = request.get_json(silent=True) or {}
+    city_name = payload.get("city_name")
+    if not city_name:
+        return jsonify({"error": "missing required field: city_name"}), 400
+    country = payload.get("country")
+
+    try:
+        city_name = _validate_place_name(city_name, "city_name")
+        if country:
+            country = _validate_place_name(country, "country")
+    except PlaceNameValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        results = _demographics_search(city_name, country)
+    except parallel.APIError as e:
+        return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not results:
+        return jsonify({
+            "city_id": _slugify(city_name),
+            "source": "parallel_live",
+            "confidence": "low",
+            "literacy_rate": None,
+            "median_age": None,
+            "population": None,
+            "median_household_income_usd": None,
+            "internet_penetration_rate": None,
+            "dominant_social_platforms": [],
+            "top_interest_categories": [],
+            "notable_public_holidays": [],
+            "citations": [],
+            "notice": "No live search results found for this city — no grounded data available.",
+        })
+
+    excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n"
+        + "\n".join(r.get("excerpts") or [])
+        for r in results[:8]
+    )
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "literacy_rate": {"type": "NUMBER", "nullable": True},
+            "median_age": {"type": "NUMBER", "nullable": True},
+            "population": {"type": "INTEGER", "nullable": True},
+            "median_household_income_usd": {"type": "NUMBER", "nullable": True},
+            "internet_penetration_rate": {"type": "NUMBER", "nullable": True},
+            "dominant_social_platforms": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "top_interest_categories": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "notable_public_holidays": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+        },
+        "required": [
+            "literacy_rate", "median_age", "population", "median_household_income_usd",
+            "internet_penetration_rate", "dominant_social_platforms",
+            "top_interest_categories", "notable_public_holidays", "confidence",
+        ],
+    }
+    prompt = (
+        "You are a demographic-research analyst briefing a touring musician or "
+        f"actor's marketing team ahead of a stop in {city_name}. Using ONLY the "
+        "web search excerpts below, produce the requested facts in the exact "
+        "JSON schema given.\n\n"
+        "Rules:\n"
+        "- Do not invent numbers not supported by the excerpts — use null for "
+        "any field the excerpts don't actually support.\n"
+        "- If sources disagree (different years or methodologies), prefer the "
+        "most recent authoritative-looking figure, but set confidence to "
+        "\"low\" rather than silently picking one as if it were certain.\n"
+        "- If the excerpts are thin or mostly irrelevant, return nulls/empty "
+        "lists rather than guessing, and set confidence to \"low\".\n\n"
+        f"SEARCH EXCERPTS:\n{excerpt_block}"
+    )
+
+    try:
+        synthesized = _call_gemini_json(prompt, schema)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
+
+    return jsonify({
+        "city_id": _slugify(city_name),
+        "source": "parallel_live",
+        "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        **synthesized,
+    })
+
+
 @app.get("/campaigns")
 def get_campaign():
     campaign_id = request.args.get("campaign_id")
     if not campaign_id:
         return jsonify({"error": "missing required query param: campaign_id"}), 400
     rows = _query(
-        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status "
+        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status, selected_metrics "
         f"FROM `{_DATASET}.campaigns` WHERE campaign_id = @campaign_id",
         [bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id)],
     )
@@ -505,13 +660,14 @@ def get_campaign():
         "genre": r["genre"],
         "talent_roster": list(r["talent_roster"] or []),
         "status": r["status"],
+        "selected_metrics": list(r["selected_metrics"] or []),
     })
 
 
 @app.get("/campaigns_list")
 def list_campaigns():
     rows = _query(
-        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status "
+        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status, selected_metrics "
         f"FROM `{_DATASET}.campaigns` ORDER BY created_at DESC",
         [],
     )
@@ -524,6 +680,7 @@ def list_campaigns():
                 "genre": r["genre"],
                 "talent_roster": list(r["talent_roster"] or []),
                 "status": r["status"],
+                "selected_metrics": list(r["selected_metrics"] or []),
             }
             for r in rows
         ]
@@ -546,6 +703,7 @@ def create_campaign():
         "talent_roster": payload.get("talent_roster") or [],
         "status": payload.get("status", "active"),
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "selected_metrics": payload.get("selected_metrics") or [],
     }
     errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.campaigns", [row])
     if errors:
@@ -627,7 +785,7 @@ def list_city_briefs():
     rows = _query(
         f"SELECT brief_id, campaign_id, city_id, generated_at, status, enthusiasm_score, "
         f"culture_summary, local_delight_summary, talent_brief_json, grounding_check_passed, "
-        f"grounding_check_notes, delight_card_url FROM `{_DATASET}.city_briefs` "
+        f"grounding_check_notes, delight_card_url, demographic_snapshot_json FROM `{_DATASET}.city_briefs` "
         f"WHERE campaign_id = @campaign_id {city_filter} "
         f"QUALIFY ROW_NUMBER() OVER (PARTITION BY city_id ORDER BY generated_at DESC) = 1",
         params,
@@ -648,6 +806,7 @@ def list_city_briefs():
                 "grounding_check_passed": r["grounding_check_passed"],
                 "grounding_check_notes": r["grounding_check_notes"],
                 "delight_card_url": r["delight_card_url"],
+                "demographic_snapshot_json": r["demographic_snapshot_json"],
             }
             for r in rows
         ],
@@ -675,11 +834,98 @@ def insert_city_brief():
         "grounding_check_passed": payload.get("grounding_check_passed"),
         "grounding_check_notes": payload.get("grounding_check_notes"),
         "delight_card_url": payload.get("delight_card_url"),
+        "demographic_snapshot_json": payload.get("demographic_snapshot_json"),
     }
     errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.city_briefs", [row])
     if errors:
         return jsonify({"error": "insert failed", "details": errors}), 500
     return jsonify({"brief_id": row["brief_id"], "status": "inserted"})
+
+
+_SUPPORTED_CAMPAIGN_TYPES = ["film_promo_tour", "music_world_tour"]
+
+
+@app.post("/campaign_strategy_chat")
+def campaign_strategy_chat():
+    """Conversational pre-fill assistant for the New Campaign form.
+
+    Deliberately NOT a new Playbook/agent (CLAUDE.md locks the MVP at 5
+    agents) -- a direct Gemini call reusing _call_gemini_json exactly like
+    the live-search routes. Purely advisory: it only ever proposes a
+    suggested_campaign the user still reviews and submits through the
+    existing, unmodified POST /campaigns path; this route never writes
+    anything itself.
+    """
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return jsonify({"error": "missing required field: messages"}), 400
+    strategy_text = payload.get("strategy_text")
+
+    transcript = "\n".join(
+        f"{m.get('role', 'user').upper()}: {m.get('content', '')}" for m in messages
+    )
+    strategy_block = (
+        f"\n\nEXISTING STRATEGY DOCUMENT PROVIDED BY THE USER:\n{strategy_text}\n"
+        if strategy_text else ""
+    )
+
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "reply": {"type": "STRING"},
+            "ready": {"type": "BOOLEAN"},
+            "suggested_campaign": {
+                "type": "OBJECT",
+                "nullable": True,
+                "properties": {
+                    "title": {"type": "STRING"},
+                    "campaign_type": {"type": "STRING", "enum": _SUPPORTED_CAMPAIGN_TYPES},
+                    "genre": {"type": "STRING"},
+                    "talent_roster": {"type": "ARRAY", "items": {"type": "STRING"}},
+                    "stops": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "city_id": {"type": "STRING", "enum": sorted(_SUPPORTED_CITY_IDS)},
+                                "stop_date": {"type": "STRING"},
+                            },
+                            "required": ["city_id", "stop_date"],
+                        },
+                    },
+                },
+                "required": ["title", "campaign_type", "genre", "talent_roster", "stops"],
+            },
+        },
+        "required": ["reply", "ready"],
+    }
+
+    prompt = (
+        "You are a helpful campaign-planning assistant inside a tour/press-tour "
+        "marketing dashboard, helping a user turn an existing strategy (if any) "
+        "or a rough idea into a structured campaign.\n\n"
+        f"Supported cities are EXACTLY (use these city_id values, nothing else): "
+        f"{sorted(_SUPPORTED_CITY_IDS)}.\n"
+        f"Supported campaign_type values are EXACTLY: {_SUPPORTED_CAMPAIGN_TYPES}.\n\n"
+        "Ask clarifying questions in `reply` if you don't yet know the title, "
+        "campaign type, genre, and at least one city stop with a date. Only set "
+        "ready=true and populate suggested_campaign once you have enough to "
+        "propose a real campaign — never suggest a city_id outside the supported "
+        "list above, and never invent a stop_date; ask for one instead.\n\n"
+        f"CONVERSATION SO FAR:\n{transcript}{strategy_block}"
+    )
+
+    try:
+        result = _call_gemini_json(prompt, schema)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini chat call failed: {e}"}), 502
+
+    return jsonify({
+        "reply": result.get("reply", ""),
+        "ready": bool(result.get("ready")),
+        "suggested_campaign": result.get("suggested_campaign"),
+    })
 
 
 @app.post("/score_enthusiasm")

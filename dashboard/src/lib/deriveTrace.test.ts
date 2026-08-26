@@ -6,7 +6,7 @@ function baseDetail(overrides: Partial<CityDetail> = {}): CityDetail {
   return {
     campaign: {
       campaign_id: "c1", title: "Nova Horizon", campaign_type: "music_world_tour",
-      genre: "pop", talent_roster: ["Artist X"], status: "active",
+      genre: "pop", talent_roster: ["Artist X"], status: "active", selected_metrics: [],
     },
     stop: { city_id: "mumbai", city_name: "Mumbai", stop_date: "2026-09-01", sequence_order: 1, event_format: "arena" },
     cultureNotes: {
@@ -20,6 +20,7 @@ function baseDetail(overrides: Partial<CityDetail> = {}): CityDetail {
     },
     fanSignal: null,
     brief: null,
+    demographicSnapshot: null,
     ...overrides,
   };
 }
@@ -68,7 +69,7 @@ describe("deriveTrace", () => {
         brief_id: "b1", campaign_id: "c1", city_id: "mumbai", generated_at: "2026-07-28T00:00:00Z",
         status: "final", enthusiasm_score: 91, culture_summary: "s", local_delight_summary: "d",
         talent_brief_json: "{}", grounding_check_passed: true, grounding_check_notes: "all clear",
-        delight_card_url: "https://x/card.html",
+        delight_card_url: "https://x/card.html", demographic_snapshot_json: null,
       },
     }));
     const labels = steps.map((s) => s.label);
@@ -84,7 +85,7 @@ describe("deriveTrace", () => {
         brief_id: "b1", campaign_id: "c1", city_id: "mumbai", generated_at: null,
         status: "needs_review", enthusiasm_score: 91, culture_summary: "s", local_delight_summary: "d",
         talent_brief_json: "{}", grounding_check_passed: false, grounding_check_notes: "issue found",
-        delight_card_url: null,
+        delight_card_url: null, demographic_snapshot_json: null,
       },
     }));
     expect(steps.find((s) => s.label === "Grounding check flagged an issue")).toBeTruthy();
@@ -97,7 +98,7 @@ describe("deriveTrace", () => {
         brief_id: "nova_horizon_2026-mumbai-live-001", campaign_id: "c1", city_id: "mumbai",
         generated_at: null, status: "final", enthusiasm_score: 91, culture_summary: "s",
         local_delight_summary: "d", talent_brief_json: "{}", grounding_check_passed: true,
-        grounding_check_notes: "ok", delight_card_url: null,
+        grounding_check_notes: "ok", delight_card_url: null, demographic_snapshot_json: null,
       },
     }));
     const insertStep = steps.find((s) => s.label === "insertCityBrief");

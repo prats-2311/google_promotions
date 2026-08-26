@@ -4,6 +4,8 @@ import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import { createCampaign } from "../lib/api";
 import { useCampaignContext } from "../lib/campaignContext";
 import { cityAccentOnPaper } from "../lib/cityTheme";
+import { StrategyChat } from "../components/ui/StrategyChat";
+import type { SuggestedCampaign } from "../lib/types";
 
 const SUPPORTED_CITIES = [
   { city_id: "mumbai", city_name: "Mumbai" },
@@ -16,6 +18,21 @@ const SUPPORTED_CITIES = [
 const CAMPAIGN_TYPES = [
   { value: "film_promo_tour", label: "Film Promo Tour" },
   { value: "music_world_tour", label: "Music World Tour" },
+];
+
+// Reusable across campaigns -- city_demographics is city-level, not tied to
+// any one campaign's genre. Selecting a metric here is what triggers the
+// orchestration driver's curated-then-live-Parallel-Search-fallback fetch
+// for each of this campaign's city stops (see run_campaign.py:_fetch_key_metrics).
+const METRIC_OPTIONS = [
+  { key: "literacy_rate", label: "Literacy rate" },
+  { key: "median_household_income_usd", label: "Median income" },
+  { key: "population", label: "Population" },
+  { key: "median_age", label: "Median age" },
+  { key: "internet_penetration_rate", label: "Internet penetration" },
+  { key: "dominant_social_platforms", label: "Dominant social platforms" },
+  { key: "top_interest_categories", label: "Top interest categories" },
+  { key: "notable_public_holidays", label: "Public holidays" },
 ];
 
 interface StopEntry {
@@ -32,6 +49,7 @@ export function NewCampaign() {
   const [genre, setGenre] = useState("");
   const [talentRoster, setTalentRoster] = useState("");
   const [stops, setStops] = useState<StopEntry[]>([]);
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +63,22 @@ export function NewCampaign() {
 
   function setStopDate(cityId: string, date: string) {
     setStops((prev) => prev.map((s) => (s.city_id === cityId ? { ...s, stop_date: date } : s)));
+  }
+
+  function toggleMetric(key: string) {
+    setSelectedMetrics((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
+  }
+
+  function applySuggestion(suggested: SuggestedCampaign) {
+    setTitle(suggested.title);
+    setCampaignType(suggested.campaign_type);
+    setGenre(suggested.genre);
+    setTalentRoster(suggested.talent_roster.join(", "));
+    setStops(
+      suggested.stops
+        .filter((s) => SUPPORTED_CITIES.some((c) => c.city_id === s.city_id))
+        .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date }))
+    );
   }
 
   const canSubmit =
@@ -70,6 +104,7 @@ export function NewCampaign() {
         stops: [...stops]
           .sort((a, b) => a.stop_date.localeCompare(b.stop_date))
           .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date })),
+        selected_metrics: selectedMetrics,
       });
       refresh();
       setActiveCampaignId(result.campaign_id);
@@ -93,6 +128,8 @@ export function NewCampaign() {
           Stops are limited to the five cities with full culture, fan, and delight coverage.
         </p>
       </header>
+
+      <StrategyChat onSuggestion={applySuggestion} />
 
       <form onSubmit={handleSubmit} className="rounded-2xl bg-paper p-6">
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -176,6 +213,34 @@ export function NewCampaign() {
                     />
                   )}
                 </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
+            Key Metrics to Consider
+          </p>
+          <p className="mb-2 font-sans text-[12px] text-ink-muted">
+            Fetched for each city stop — from curated data when available, live web search otherwise.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {METRIC_OPTIONS.map((metric) => {
+              const selected = selectedMetrics.includes(metric.key);
+              return (
+                <button
+                  key={metric.key}
+                  type="button"
+                  onClick={() => toggleMetric(metric.key)}
+                  className={`rounded-full border px-3 py-1.5 font-sans text-[12px] transition-colors ${
+                    selected
+                      ? "border-gold bg-gold/15 text-ink"
+                      : "border-line bg-paper-raised text-ink-muted hover:text-ink"
+                  }`}
+                >
+                  {metric.label}
+                </button>
               );
             })}
           </div>

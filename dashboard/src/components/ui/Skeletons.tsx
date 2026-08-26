@@ -1,9 +1,9 @@
 function Block({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-md bg-canvas-raised ${className}`} />;
+  return <div className={`skeleton rounded-md ${className}`} />;
 }
 
 function CardBlock({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-2xl bg-canvas-raised ${className}`} />;
+  return <div className={`skeleton rounded-2xl ${className}`} />;
 }
 
 export function DashboardSkeleton() {

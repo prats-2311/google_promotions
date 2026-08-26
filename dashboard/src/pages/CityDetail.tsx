@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -19,7 +19,9 @@ import {
   Wrench,
   GitBranch,
   MessageCircle,
+  BarChart3,
 } from "lucide-react";
+import { StatMeter } from "../components/ui/StatMeter";
 import { getCityDetail } from "../lib/api";
 import type { CityDetail as CityDetailData, TalentBrief, TraceStep } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
@@ -66,6 +68,7 @@ export function CityDetail() {
     queryFn: () => getCityDetail(activeCampaignId, cityId),
   });
   const [tab, setTab] = useState<Tab>("delight");
+  const reduceMotion = useReducedMotion();
 
   if (!data) return <CityDetailSkeleton />;
 
@@ -74,7 +77,11 @@ export function CityDetail() {
   const brief: TalentBrief | null = data.brief?.talent_brief_json ? JSON.parse(data.brief.talent_brief_json) : null;
 
   return (
-    <div>
+    <motion.div
+      initial={reduceMotion ? undefined : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+    >
       <Link to="/" className="mb-6 flex items-center gap-1.5 font-sans text-[13px] text-canvas-muted hover:text-canvas-text">
         <ArrowLeft size={14} /> Back to campaign
       </Link>
@@ -120,12 +127,12 @@ export function CityDetail() {
       {tab === "intelligence" && <IntelligenceTab data={data} accent={accentPaper} />}
       {tab === "delight" && <DelightTab data={data} accent={accentPaper} />}
       {tab === "brief" && <BriefTab brief={brief} accent={accentPaper} cardUrl={data.brief?.delight_card_url ?? null} />}
-    </div>
+    </motion.div>
   );
 }
 
 function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: string }) {
-  const { cultureNotes } = data;
+  const { cultureNotes, demographicSnapshot } = data;
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <div className="rounded-2xl bg-paper p-6">
@@ -161,6 +168,84 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
           {cultureNotes.humor_boundaries}
         </p>
       </div>
+      {demographicSnapshot && <KeyMetricsCard snapshot={demographicSnapshot} accent={accent} />}
+    </div>
+  );
+}
+
+function KeyMetricsCard({ snapshot, accent }: { snapshot: NonNullable<CityDetailData["demographicSnapshot"]>; accent: string }) {
+  const numberStats: { label: string; value: number }[] = [
+    snapshot.population != null && { label: "Population", value: snapshot.population },
+    snapshot.median_household_income_usd != null && {
+      label: "Median income",
+      value: snapshot.median_household_income_usd,
+    },
+    snapshot.median_age != null && { label: "Median age", value: snapshot.median_age },
+  ].filter(Boolean) as { label: string; value: number }[];
+
+  const listStats: { label: string; items: string[] }[] = [
+    snapshot.top_interest_categories?.length && { label: "Top interests", items: snapshot.top_interest_categories },
+    snapshot.dominant_social_platforms?.length && {
+      label: "Social platforms",
+      items: snapshot.dominant_social_platforms,
+    },
+    snapshot.notable_public_holidays?.length && { label: "Public holidays", items: snapshot.notable_public_holidays },
+  ].filter(Boolean) as { label: string; items: string[] }[];
+
+  return (
+    <div className="rounded-2xl bg-paper p-6 lg:col-span-2">
+      <div className="flex items-center justify-between">
+        <SectionLabel icon={BarChart3} accent={accent} label="Key Metrics" />
+        {snapshot.source === "parallel_live" && (
+          <span className="font-sans text-[10px] uppercase tracking-[0.08em] text-ink-muted">
+            live search · confidence: {snapshot.confidence ?? "n/a"}
+          </span>
+        )}
+      </div>
+
+      {(snapshot.literacy_rate != null || snapshot.internet_penetration_rate != null) && (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {snapshot.literacy_rate != null && (
+            <div>
+              <p className="mb-1 font-sans text-[11px] text-ink-muted">Literacy rate</p>
+              <StatMeter value={Math.round(snapshot.literacy_rate)} accent={accent} />
+            </div>
+          )}
+          {snapshot.internet_penetration_rate != null && (
+            <div>
+              <p className="mb-1 font-sans text-[11px] text-ink-muted">Internet penetration</p>
+              <StatMeter value={Math.round(snapshot.internet_penetration_rate)} accent={accent} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {numberStats.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+          {numberStats.map((s) => (
+            <div key={s.label}>
+              <p className="font-sans text-[11px] text-ink-muted">{s.label}</p>
+              <p className="font-sans text-[15px] font-semibold tabular-nums text-ink">{s.value.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {listStats.map((s) => (
+        <div key={s.label} className="mt-4">
+          <p className="mb-1.5 font-sans text-[11px] text-ink-muted">{s.label}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {s.items.map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-line bg-paper-raised px-2.5 py-1 font-sans text-[11px] text-ink"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

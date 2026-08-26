@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { Table2, BarChart3 } from "lucide-react";
 import { getCampaignOverview, rankCities } from "../lib/api";
@@ -38,6 +38,7 @@ export function CompareCities() {
   const { activeCampaignId } = useCampaignContext();
   const [view, setView] = useState<"chart" | "table">("chart");
   const [hovered, setHovered] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   const { data, error } = useQuery({
     queryKey: ["compareCities", activeCampaignId],
@@ -57,7 +58,11 @@ export function CompareCities() {
   const maxScore = Math.max(...ranked.map((r) => r.enthusiasm_score), 1);
 
   return (
-    <div>
+    <motion.div
+      initial={reduceMotion ? undefined : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, ease: "easeOut" }}
+    >
       <header className="mb-8 flex items-end justify-between">
         <div>
           <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">
@@ -143,7 +148,7 @@ export function CompareCities() {
           </table>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 

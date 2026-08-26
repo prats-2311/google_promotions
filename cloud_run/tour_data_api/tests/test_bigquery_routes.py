@@ -98,6 +98,42 @@ def test_local_delight_returns_nested_structs(client, mock_bq):
     assert body["beloved_icons"][0]["domain"] == "film"
 
 
+# ---- /city_demographics ----
+
+def test_city_demographics_requires_city_id(client):
+    res = client.get("/city_demographics")
+    assert res.status_code == 400
+
+
+def test_city_demographics_404_when_no_row(client, mock_bq):
+    _mock_query_result(mock_bq, [])
+    res = client.get("/city_demographics?city_id=atlantis")
+    assert res.status_code == 404
+
+
+def test_city_demographics_returns_row_shape(client, mock_bq):
+    _mock_query_result(mock_bq, [{
+        "city_id": "mumbai", "literacy_rate": 89.2, "median_age": 28.4, "population": 20400000,
+        "median_household_income_usd": 9800.0, "internet_penetration_rate": 62.0,
+        "dominant_social_platforms": ["Instagram"], "top_interest_categories": ["cricket"],
+        "notable_public_holidays": ["Diwali"],
+    }])
+    res = client.get("/city_demographics?city_id=mumbai")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["city_id"] == "mumbai"
+    assert body["literacy_rate"] == 89.2
+    assert body["top_interest_categories"] == ["cricket"]
+
+
+def test_city_demographics_query_is_parameterized_not_string_formatted(client, mock_bq):
+    _mock_query_result(mock_bq, [])
+    client.get("/city_demographics?city_id=mumbai'; DROP TABLE city_demographics; --")
+    sql_arg = mock_bq.query.call_args[0][0]
+    assert "DROP TABLE" not in sql_arg
+    assert "@city_id" in sql_arg
+
+
 # ---- /campaigns ----
 
 def test_campaigns_requires_campaign_id(client):
@@ -114,10 +150,12 @@ def test_campaigns_404_when_no_row(client, mock_bq):
 def test_campaigns_returns_row_shape(client, mock_bq):
     _mock_query_result(mock_bq, [{
         "campaign_id": "nova_horizon_2026", "title": "Nova Horizon", "campaign_type": "music_world_tour",
-        "genre": "pop", "talent_roster": ["Artist X"], "status": "active",
+        "genre": "pop", "talent_roster": ["Artist X"], "status": "active", "selected_metrics": ["literacy_rate"],
     }])
     res = client.get("/campaigns?campaign_id=nova_horizon_2026")
-    assert res.get_json()["title"] == "Nova Horizon"
+    body = res.get_json()
+    assert body["title"] == "Nova Horizon"
+    assert body["selected_metrics"] == ["literacy_rate"]
 
 
 # ---- /campaigns_list ----
@@ -125,9 +163,9 @@ def test_campaigns_returns_row_shape(client, mock_bq):
 def test_campaigns_list_returns_all_rows(client, mock_bq):
     _mock_query_result(mock_bq, [
         {"campaign_id": "nova_horizon_2026", "title": "Nova Horizon", "campaign_type": "film_promo_tour",
-         "genre": "sci-fi action", "talent_roster": ["lead actor"], "status": "active"},
+         "genre": "sci-fi action", "talent_roster": ["lead actor"], "status": "active", "selected_metrics": []},
         {"campaign_id": "second_2026", "title": "Second Campaign", "campaign_type": "music_world_tour",
-         "genre": "pop", "talent_roster": [], "status": "active"},
+         "genre": "pop", "talent_roster": [], "status": "active", "selected_metrics": ["population"]},
     ])
     res = client.get("/campaigns_list")
     assert res.status_code == 200
@@ -161,6 +199,18 @@ def test_campaigns_post_inserts_row(client, mock_bq):
     inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
     assert inserted_row["status"] == "active"
     assert inserted_row["talent_roster"] == []
+    assert inserted_row["selected_metrics"] == []
+
+
+def test_campaigns_post_stores_selected_metrics(client, mock_bq):
+    mock_bq.insert_rows_json.return_value = []
+    res = client.post("/campaigns", json={
+        "campaign_id": "c1", "title": "New Tour", "campaign_type": "film_promo_tour", "genre": "drama",
+        "selected_metrics": ["literacy_rate", "top_interest_categories"],
+    })
+    assert res.status_code == 200
+    inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
+    assert inserted_row["selected_metrics"] == ["literacy_rate", "top_interest_categories"]
 
 
 def test_campaigns_post_surfaces_insert_errors_as_500(client, mock_bq):
@@ -256,10 +306,12 @@ def test_city_briefs_get_formats_generated_at_as_iso(client, mock_bq):
         "enthusiasm_score": 90, "culture_summary": "s", "local_delight_summary": "d",
         "talent_brief_json": "{}", "grounding_check_passed": True,
         "grounding_check_notes": "ok", "delight_card_url": "https://x",
+        "demographic_snapshot_json": '{"literacy_rate": 89.2}',
     }])
     res = client.get("/city_briefs?campaign_id=c1")
     brief = res.get_json()["briefs"][0]
     assert brief["generated_at"] == "2026-07-28T12:00:00"
+    assert brief["demographic_snapshot_json"] == '{"literacy_rate": 89.2}'
 
 
 def test_city_briefs_get_optional_city_id_adds_filter(client, mock_bq):
@@ -285,6 +337,17 @@ def test_city_briefs_post_inserts_row(client, mock_bq):
     assert res.status_code == 200
     assert res.get_json()["status"] == "inserted"
     mock_bq.insert_rows_json.assert_called_once()
+
+
+def test_city_briefs_post_stores_demographic_snapshot(client, mock_bq):
+    mock_bq.insert_rows_json.return_value = []
+    res = client.post("/city_briefs", json={
+        "brief_id": "b1", "campaign_id": "c1", "city_id": "mumbai", "status": "final",
+        "demographic_snapshot_json": '{"literacy_rate": 89.2}',
+    })
+    assert res.status_code == 200
+    inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
+    assert inserted_row["demographic_snapshot_json"] == '{"literacy_rate": 89.2}'
 
 
 def test_city_briefs_post_surfaces_insert_errors_as_500(client, mock_bq):

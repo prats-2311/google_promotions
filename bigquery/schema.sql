@@ -56,6 +56,25 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.local_delight` (
   last_updated TIMESTAMP
 );
 
+-- General, campaign/genre-independent city facts (literacy, income, interests,
+-- digital habits) -- distinct from fan_signals, which is genre-scoped. Selected
+-- per-campaign via campaigns.selected_metrics; curated for the 5 demo cities,
+-- with the same Parallel-Search-live-fallback pattern as culture_notes/local_delight
+-- for any other city (see tour_data_api/CLAUDE.md).
+CREATE TABLE IF NOT EXISTS `tour_intelligence.city_demographics` (
+  city_id STRING NOT NULL,
+  literacy_rate FLOAT64,
+  median_age FLOAT64,
+  population INT64,
+  median_household_income_usd FLOAT64,
+  internet_penetration_rate FLOAT64,
+  dominant_social_platforms ARRAY<STRING>,
+  top_interest_categories ARRAY<STRING>,
+  notable_public_holidays ARRAY<STRING>,
+  source STRING,
+  last_updated TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS `tour_intelligence.campaigns` (
   campaign_id STRING NOT NULL,
   title STRING NOT NULL,
@@ -63,7 +82,8 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.campaigns` (
   genre STRING,
   talent_roster ARRAY<STRING>,
   status STRING,
-  created_at TIMESTAMP
+  created_at TIMESTAMP,
+  selected_metrics ARRAY<STRING>
 );
 
 CREATE TABLE IF NOT EXISTS `tour_intelligence.campaign_stops` (
@@ -89,5 +109,15 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.city_briefs` (
   talent_brief_json STRING,
   grounding_check_passed BOOL,
   grounding_check_notes STRING,
-  delight_card_url STRING
+  delight_card_url STRING,
+  demographic_snapshot_json STRING
 );
+
+-- CREATE TABLE IF NOT EXISTS is a no-op against tables that already exist
+-- live in this dataset -- these ALTERs are what actually patch them when this
+-- script is re-run against the already-provisioned liifecalling-academy project.
+ALTER TABLE `tour_intelligence.campaigns`
+  ADD COLUMN IF NOT EXISTS selected_metrics ARRAY<STRING>;
+
+ALTER TABLE `tour_intelligence.city_briefs`
+  ADD COLUMN IF NOT EXISTS demographic_snapshot_json STRING;

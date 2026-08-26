@@ -23,9 +23,13 @@ then call checkGrounding directly against tour_data_api — the same
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import requests
 
@@ -37,11 +41,36 @@ API_BASE = f"https://{LOCATION}-dialogflow.googleapis.com/v3beta1"
 DATASET = "tour_intelligence"
 TOUR_DATA_API = "https://tour-data-api-602700957663.us-central1.run.app"
 DELIGHT_RENDERER = "https://delight-card-renderer-602700957663.us-central1.run.app"
-CAMPAIGN_TITLE = "Nova Horizon"
+
+_METADATA_SA_BASE = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default"
 
 
-def _gcloud_token(kind: str) -> str:
-    return subprocess.check_output(["gcloud", "auth", f"print-{kind}-token"]).decode().strip()
+def _metadata_server_token(kind: str, audience: str | None = None) -> str:
+    if kind == "access":
+        url = f"{_METADATA_SA_BASE}/token"
+    else:
+        url = f"{_METADATA_SA_BASE}/identity?audience={urllib.parse.quote(audience or '', safe='')}"
+    req = urllib.request.Request(url, headers={"Metadata-Flavor": "Google"})
+    with urllib.request.urlopen(req, timeout=2) as resp:
+        body = resp.read().decode()
+    return json.loads(body)["access_token"] if kind == "access" else body.strip()
+
+
+def _auth_token(kind: str, audience: str | None = None) -> str:
+    """A Cloud Run Job container has no gcloud CLI and no user credentials --
+    only the job's attached service account, reachable via the instance
+    metadata server. Falls back to an already-authenticated local gcloud
+    session for local dev -- same dual-path pattern as dashboard/server/
+    index.js's getIdentityToken()."""
+    try:
+        return _metadata_server_token(kind, audience)
+    except (urllib.error.URLError, OSError, TimeoutError):
+        if kind == "access":
+            return subprocess.check_output(["gcloud", "auth", "print-access-token"]).decode().strip()
+        cmd = ["gcloud", "auth", "print-identity-token"]
+        if audience:
+            cmd += ["--audiences", audience]
+        return subprocess.check_output(cmd).decode().strip()
 
 
 def _detect_intent(session_id: str, text: str, access_token: str) -> dict:
@@ -180,12 +209,57 @@ def _synthesize_draft_brief(city_name: str, collected: dict, revision_notes: str
         f"local_phrases), and high_probability_fan_questions (array of 3-5 strings). "
         f"Respond with ONLY the JSON object, no other text.{revision}"
     )
-    resp = _detect_intent(f"synth-{int(time.time() * 1000)}", prompt, _gcloud_token("access"))
+    resp = _detect_intent(f"synth-{int(time.time() * 1000)}", prompt, _auth_token("access"))
     texts = []
     for m in resp.get("queryResult", {}).get("responseMessages", []):
         if "text" in m:
             texts.extend(m["text"]["text"])
     return "\n".join(texts)
+
+
+def _fetch_selected_metrics(campaign_id: str, identity_token: str) -> list[str]:
+    resp = requests.get(
+        f"{TOUR_DATA_API}/campaigns",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        params={"campaign_id": campaign_id},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json().get("selected_metrics") or []
+
+
+def _live_city_demographics_search_direct(city_name: str, identity_token: str) -> dict:
+    resp = requests.post(
+        f"{TOUR_DATA_API}/live_city_demographics_search",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        json={"city_name": city_name},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _fetch_key_metrics(city_id: str, city_name: str, selected_metrics: list[str], identity_token: str) -> dict | None:
+    """Selected once per campaign (campaigns.selected_metrics), fetched once
+    per city stop, purely deterministic -- no playbook/LLM turn involved, so
+    none of the per-turn execution budget concerns documented in this
+    module's docstring apply here. Curated lookup first, falling back to the
+    live Parallel-Search-grounded route for cities with no seeded row, same
+    pattern already proven for culture_notes above."""
+    if not selected_metrics:
+        return None
+    resp = requests.get(
+        f"{TOUR_DATA_API}/city_demographics",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        params={"city_id": city_id},
+        timeout=30,
+    )
+    if resp.status_code == 404:
+        live = _live_city_demographics_search_direct(city_name, identity_token)
+        print(f"[{city_id}] no seeded city_demographics — used live_city_demographics_search fallback (confidence={live.get('confidence')})")
+        return live
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _live_culture_search_direct(city_name: str, identity_token: str) -> dict:
@@ -210,21 +284,61 @@ def _check_grounding_direct(draft_brief_text: str, donts: list[str], humor_bound
     return resp.json()
 
 
-def _brief_already_final(campaign_id: str, city_id: str) -> bool:
-    query = (
-        f"SELECT brief_id FROM `{DATASET}.city_briefs` "
-        f"WHERE campaign_id = '{campaign_id}' AND city_id = '{city_id}' AND status = 'final'"
+def _fetch_campaign_title(campaign_id: str, identity_token: str) -> str:
+    resp = requests.get(
+        f"{TOUR_DATA_API}/campaigns",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        params={"campaign_id": campaign_id},
+        timeout=30,
     )
-    out = subprocess.check_output(
-        ["bq", "query", f"--project_id={PROJECT_ID}", "--use_legacy_sql=false", "--format=json", query]
-    ).decode()
-    return len(json.loads(out)) > 0
+    resp.raise_for_status()
+    return resp.json()["title"]
 
 
-def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max_turns: int = 10) -> str | None:
-    if _brief_already_final(campaign_id, city_id):
+def _fetch_campaign_stops(campaign_id: str, identity_token: str) -> list[dict]:
+    resp = requests.get(
+        f"{TOUR_DATA_API}/campaign_stops",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        params={"campaign_id": campaign_id},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["stops"]
+
+
+def _brief_already_final(campaign_id: str, city_id: str, identity_token: str) -> bool:
+    """A Cloud Run Job container has no `bq` CLI either -- reuse tour_data_api's
+    own /city_briefs route (already filters to the latest row per city) rather
+    than shelling out."""
+    resp = requests.get(
+        f"{TOUR_DATA_API}/city_briefs",
+        headers={"Authorization": f"Bearer {identity_token}"},
+        params={"campaign_id": campaign_id, "city_id": city_id},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return any(b.get("status") == "final" for b in resp.json().get("briefs", []))
+
+
+def run_city(
+    city_id: str,
+    city_name: str,
+    campaign_id: str,
+    stop_date: str,
+    campaign_title: str,
+    selected_metrics: list[str] | None = None,
+    max_turns: int = 10,
+) -> str | None:
+    if _brief_already_final(campaign_id, city_id, _auth_token("identity", audience=TOUR_DATA_API)):
         print(f"[{city_id}] already has a final brief — skipping")
         return None
+
+    # Phase 0: fetch any user-selected key metrics (literacy, income, top
+    # interests, etc.) -- deterministic, no playbook turn, so it can happen
+    # up front regardless of how the gather loop below goes.
+    demographic_snapshot = _fetch_key_metrics(
+        city_id, city_name, selected_metrics or [], _auth_token("identity", audience=TOUR_DATA_API)
+    )
 
     def _fresh_session_id() -> str:
         return f"driver-{campaign_id}-{city_id}-{int(time.time() * 1000)}"
@@ -250,7 +364,7 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
             prompt = _next_step_prompt(city_name, collected, stuck_on=True)
             stuck_turns = 0
             print(f"[{city_id}] resetting to a fresh session after repeated stalls")
-        resp = _detect_intent(session_id, prompt, _gcloud_token("access"))
+        resp = _detect_intent(session_id, prompt, _auth_token("access"))
         actions = _actions(resp)
 
         cn = _tool_output(actions, "getCultureNotes")
@@ -263,7 +377,7 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
             # reasons, code acts" split already used for brief synthesis below —
             # call the live Parallel-Search-grounded route directly via HTTP instead
             # of chasing a second conversational tool call.
-            live = _live_culture_search_direct(city_name, _gcloud_token("identity"))
+            live = _live_culture_search_direct(city_name, _auth_token("identity", audience=TOUR_DATA_API))
             if live and "error" not in live:
                 collected["culture_notes"] = live
                 print(f"[{city_id}] no seeded culture_notes — used live_culture_search fallback (confidence={live.get('confidence')})")
@@ -293,7 +407,10 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
 
     # Phase 2: synthesize the brief and run the grounding check deterministically —
     # this is the "code acts" half, avoiding further fragile playbook navigation.
-    identity_token = _gcloud_token("identity")
+    # tour_data_api and delight_card_renderer are separate Cloud Run services, so
+    # each needs its own audience-bound identity token -- reusing one token across
+    # both audiences was a latent bug in the original single-campaign version.
+    tour_data_token = _auth_token("identity", audience=TOUR_DATA_API)
     donts = (collected.get("culture_notes") or {}).get("donts", [])
     humor_boundaries = (collected.get("culture_notes") or {}).get("humor_boundaries")
 
@@ -306,7 +423,7 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
             print(f"[{city_id}] attempt {attempt + 1}: could not extract JSON from draft, retrying")
             revision_notes = "your last response wasn't valid JSON — return only the JSON object."
             continue
-        check = _check_grounding_direct(json.dumps(draft_json), donts, humor_boundaries, identity_token)
+        check = _check_grounding_direct(json.dumps(draft_json), donts, humor_boundaries, tour_data_token)
         print(f"[{city_id}] grounding attempt {attempt + 1}: passed={check['grounding_check_passed']}")
         if check["grounding_check_passed"]:
             talent_brief_json = json.dumps(draft_json)
@@ -321,7 +438,7 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
 
     render_payload = {
         "brief_id": brief_id,
-        "campaign_title": CAMPAIGN_TITLE,
+        "campaign_title": campaign_title,
         "city_id": city_id,
         "city_name": city_name,
         "stop_date": stop_date,
@@ -331,8 +448,9 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
         "local_phrases": (collected.get("local_delight") or {}).get("local_phrases", [])[:3],
         "talent_brief": _brief_sections(collected["talent_brief_json"]),
     }
+    delight_token = _auth_token("identity", audience=DELIGHT_RENDERER)
     render_resp = requests.post(
-        DELIGHT_RENDERER, headers={"Authorization": f"Bearer {identity_token}"}, json=render_payload, timeout=60
+        DELIGHT_RENDERER, headers={"Authorization": f"Bearer {delight_token}"}, json=render_payload, timeout=60
     )
     render_resp.raise_for_status()
     delight_card_url = render_resp.json()["delight_card_url"]
@@ -349,9 +467,10 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
         "grounding_check_passed": True,
         "grounding_check_notes": "Automated driver: grounding check passed via live Playbook run.",
         "delight_card_url": delight_card_url,
+        "demographic_snapshot_json": json.dumps(demographic_snapshot) if demographic_snapshot else None,
     }
     insert_resp = requests.post(
-        f"{TOUR_DATA_API}/city_briefs", headers={"Authorization": f"Bearer {identity_token}"}, json=insert_payload, timeout=60
+        f"{TOUR_DATA_API}/city_briefs", headers={"Authorization": f"Bearer {tour_data_token}"}, json=insert_payload, timeout=60
     )
     insert_resp.raise_for_status()
     print(f"[{city_id}] inserted brief {brief_id} — {delight_card_url}")
@@ -359,12 +478,14 @@ def run_city(city_id: str, city_name: str, campaign_id: str, stop_date: str, max
 
 
 if __name__ == "__main__":
-    campaign_id = sys.argv[1] if len(sys.argv) > 1 else "nova_horizon_2026"
-    cities = [
-        ("london", "London", "2026-08-13"),
-        ("tokyo", "Tokyo", "2026-08-17"),
-        ("sao_paulo", "São Paulo", "2026-08-20"),
-        ("new_york", "New York", "2026-08-24"),
-    ]
-    for city_id, city_name, stop_date in cities:
-        run_city(city_id, city_name, campaign_id, stop_date)
+    # CAMPAIGN_ID env var takes precedence -- that's how the Cloud Run Job
+    # execution override passes it in when triggered from the dashboard; the
+    # argv fallback is for local/manual runs.
+    campaign_id = os.environ.get("CAMPAIGN_ID") or (sys.argv[1] if len(sys.argv) > 1 else "nova_horizon_2026")
+    lookup_token = _auth_token("identity", audience=TOUR_DATA_API)
+    campaign_title = _fetch_campaign_title(campaign_id, lookup_token)
+    stops = _fetch_campaign_stops(campaign_id, lookup_token)
+    selected_metrics = _fetch_selected_metrics(campaign_id, lookup_token)
+    print(f"[{campaign_id}] {campaign_title!r} — {len(stops)} stop(s) to process, selected_metrics={selected_metrics}")
+    for stop in stops:
+        run_city(stop["city_id"], stop["city_name"], campaign_id, stop["stop_date"], campaign_title, selected_metrics)

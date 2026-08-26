@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
-import { Clapperboard, LayoutGrid, ArrowLeftRight, ChevronsUpDown, Plus, Check } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Clapperboard, LayoutGrid, ArrowLeftRight, ChevronsUpDown, Plus, Check, HelpCircle } from "lucide-react";
 import { useCampaignContext } from "../lib/campaignContext";
+import { TourGuide, hasSeenTour } from "./ui/TourGuide";
 
 const NAV_ITEMS = [
   { to: "/", label: "Campaign", icon: LayoutGrid, end: true },
@@ -27,7 +28,7 @@ function CampaignSwitcher() {
   }, []);
 
   return (
-    <div ref={rootRef} className="relative mt-auto">
+    <div ref={rootRef} data-tour="campaign-switcher" className="relative mt-auto">
       {open && (
         <div className="absolute bottom-full left-0 mb-2 w-full overflow-hidden rounded-lg border border-canvas-line bg-canvas-raised shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)]">
           <div className="max-h-56 overflow-y-auto py-1">
@@ -85,17 +86,51 @@ function CampaignSwitcher() {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [tourActive, setTourActive] = useState(false);
+
+  function replayTour() {
+    if (location.pathname !== "/") {
+      navigate("/");
+      setTimeout(() => setTourActive(true), 300);
+    } else {
+      setTourActive(true);
+    }
+  }
+
+  // Only auto-launch from the Dashboard landing route -- that's where every
+  // step's target actually lives; deep-linking in mid-tour on another page
+  // would just point at nothing.
+  useEffect(() => {
+    if (location.pathname === "/" && !hasSeenTour()) {
+      const t = setTimeout(() => setTourActive(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [location.pathname]);
+
   return (
     <div className="flex min-h-screen bg-canvas">
+      <TourGuide active={tourActive} onClose={() => setTourActive(false)} />
       <aside className="flex w-60 shrink-0 flex-col border-r border-canvas-line px-5 py-6">
-        <div className="mb-10 flex items-center gap-2.5 px-1">
-          <Clapperboard size={20} className="text-gold" />
-          <div>
-            <p className="font-display text-[15px] leading-tight text-canvas-text">Tour Intelligence</p>
-            <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-canvas-muted">
-              Agentic Cinema OS
-            </p>
+        <div className="mb-10 flex items-center justify-between gap-2.5 px-1">
+          <div className="flex items-center gap-2.5">
+            <Clapperboard size={20} className="text-gold" />
+            <div>
+              <p className="font-display text-[15px] leading-tight text-canvas-text">Tour Intelligence</p>
+              <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-canvas-muted">
+                Agentic Cinema OS
+              </p>
+            </div>
           </div>
+          <button
+            onClick={replayTour}
+            aria-label="Replay product tour"
+            title="Replay product tour"
+            className="shrink-0 text-canvas-muted hover:text-gold"
+          >
+            <HelpCircle size={16} />
+          </button>
         </div>
 
         <nav className="flex flex-col gap-1">
@@ -104,6 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={to}
               to={to}
               end={end}
+              data-tour={to === "/compare" ? "compare-cities-nav" : undefined}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 rounded-lg px-3 py-2 font-sans text-[13px] transition-colors ${
                   isActive

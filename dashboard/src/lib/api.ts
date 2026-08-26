@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, NewCampaignInput } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse } from "./types";
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -22,6 +22,22 @@ export async function createCampaign(input: NewCampaignInput) {
   });
   if (!res.ok) throw new Error(`create campaign failed: ${res.status}`);
   return res.json() as Promise<{ campaign_id: string; status: string }>;
+}
+
+export async function chatAboutStrategy(messages: ChatMessage[], strategyText: string | null) {
+  const res = await fetch("/api/campaign-strategy-chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, strategy_text: strategyText }),
+  });
+  if (!res.ok) throw new Error(`campaign strategy chat failed: ${res.status}`);
+  return res.json() as Promise<StrategyChatResponse>;
+}
+
+export async function generateBriefs(campaignId: string) {
+  const res = await fetch(`/api/campaigns/${campaignId}/generate-briefs`, { method: "POST" });
+  if (!res.ok) throw new Error(`generate-briefs failed: ${res.status}`);
+  return res.json() as Promise<{ status: string; operation: string }>;
 }
 
 export function getCityDetail(campaignId: string, cityId: string) {

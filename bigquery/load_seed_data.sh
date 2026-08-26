@@ -20,6 +20,9 @@ bq load --project_id="$PROJECT_ID" --source_format=NEWLINE_DELIMITED_JSON --repl
   "${DATASET}.local_delight" "$SCRIPT_DIR/seed/local_delight.jsonl"
 
 bq load --project_id="$PROJECT_ID" --source_format=NEWLINE_DELIMITED_JSON --replace \
+  "${DATASET}.city_demographics" "$SCRIPT_DIR/seed/city_demographics.jsonl"
+
+bq load --project_id="$PROJECT_ID" --source_format=NEWLINE_DELIMITED_JSON --replace \
   "${DATASET}.campaigns" "$SCRIPT_DIR/seed/campaigns.jsonl"
 
 bq load --project_id="$PROJECT_ID" --source_format=NEWLINE_DELIMITED_JSON --replace \

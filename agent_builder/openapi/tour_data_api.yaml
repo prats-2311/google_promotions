@@ -88,6 +88,145 @@ paths:
         "500":
           description: Parallel Search or Gemini synthesis call failed.
 
+  /city_demographics:
+    get:
+      operationId: getCityDemographics
+      summary: >
+        General, campaign/genre-independent city facts: literacy rate, median
+        age, population, median household income, internet penetration,
+        dominant social platforms, top entertainment interest categories, and
+        notable public holidays. Distinct from getFanSignals, which is
+        genre-scoped.
+      parameters:
+        - name: city_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: City demographics record for the city.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  literacy_rate: { type: number, nullable: true }
+                  median_age: { type: number, nullable: true }
+                  population: { type: integer, nullable: true }
+                  median_household_income_usd: { type: number, nullable: true }
+                  internet_penetration_rate: { type: number, nullable: true }
+                  dominant_social_platforms: { type: array, items: { type: string } }
+                  top_interest_categories: { type: array, items: { type: string } }
+                  notable_public_holidays: { type: array, items: { type: string } }
+        "404":
+          description: No matching record for the given city_id.
+
+  /live_city_demographics_search:
+    post:
+      operationId: liveCityDemographicsSearch
+      summary: >
+        Fallback for a city with no city_demographics row. Calls Parallel's
+        live Search API and synthesizes the results (Gemini, schema-constrained)
+        into the same shape getCityDemographics returns, marked
+        source=parallel_live with citations. Numeric facts that disagree
+        across sources are marked confidence=low rather than picked
+        arbitrarily. Same per-turn execution budget caveat as
+        liveCultureSearch — call directly from the orchestration driver, not
+        chained inside a nested playbook frame.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_name]
+              properties:
+                city_name: { type: string }
+                country: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Live-grounded demographic data for the city.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  source: { type: string }
+                  confidence: { type: string }
+                  literacy_rate: { type: number, nullable: true }
+                  median_age: { type: number, nullable: true }
+                  population: { type: integer, nullable: true }
+                  median_household_income_usd: { type: number, nullable: true }
+                  internet_penetration_rate: { type: number, nullable: true }
+                  dominant_social_platforms: { type: array, items: { type: string } }
+                  top_interest_categories: { type: array, items: { type: string } }
+                  notable_public_holidays: { type: array, items: { type: string } }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+        "500":
+          description: Parallel Search or Gemini synthesis call failed.
+
+  /campaign_strategy_chat:
+    post:
+      operationId: campaignStrategyChat
+      summary: >
+        Conversational pre-fill assistant for the New Campaign form. Not a
+        Playbook tool used by any of the 5 MVP agents -- called directly by
+        the dashboard BFF. Purely advisory: returns a suggested_campaign the
+        user reviews and submits through the existing createCampaign path;
+        this route never writes anything itself.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages]
+              properties:
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role: { type: string }
+                      content: { type: string }
+                strategy_text: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Assistant reply, plus a suggested campaign once enough information is gathered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply: { type: string }
+                  ready: { type: boolean }
+                  suggested_campaign:
+                    type: object
+                    nullable: true
+                    properties:
+                      title: { type: string }
+                      campaign_type: { type: string }
+                      genre: { type: string }
+                      talent_roster: { type: array, items: { type: string } }
+                      stops:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            city_id: { type: string }
+                            stop_date: { type: string }
+        "502":
+          description: Gemini call failed.
+
   /fan_signals:
     get:
       operationId: getFanSignals
