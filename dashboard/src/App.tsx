@@ -3,6 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { Dashboard } from "./pages/Dashboard";
 import { CampaignProvider } from "./lib/campaignContext";
+import { CityDetailSkeleton, CompareCitiesSkeleton, NewCampaignSkeleton } from "./components/ui/Skeletons";
 
 // Dashboard is the landing route, loaded eagerly -- it's needed on first
 // paint anyway, so splitting it out would just add a chunk-fetch delay with
@@ -17,14 +18,38 @@ export default function App() {
   return (
     <CampaignProvider>
       <AppShell>
-        <Suspense fallback={null}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/city/:cityId" element={<CityDetail />} />
-            <Route path="/compare" element={<CompareCities />} />
-            <Route path="/campaigns/new" element={<NewCampaign />} />
-          </Routes>
-        </Suspense>
+        {/* Each lazy route gets its own Suspense + matching skeleton, not one
+            shared fallback={null} -- a bare null meant a direct/hard load of
+            any of these routes (a fresh visit, a shared link, a reload) showed
+            a totally blank page for however long that route's JS chunk took
+            to fetch, indistinguishable from the app being broken. */}
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route
+            path="/city/:cityId"
+            element={
+              <Suspense fallback={<CityDetailSkeleton />}>
+                <CityDetail />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/compare"
+            element={
+              <Suspense fallback={<CompareCitiesSkeleton />}>
+                <CompareCities />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/campaigns/new"
+            element={
+              <Suspense fallback={<NewCampaignSkeleton />}>
+                <NewCampaign />
+              </Suspense>
+            }
+          />
+        </Routes>
       </AppShell>
     </CampaignProvider>
   );
