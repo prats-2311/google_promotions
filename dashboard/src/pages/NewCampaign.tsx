@@ -40,6 +40,23 @@ interface StopEntry {
   stop_date: string;
 }
 
+// The native <input type="date"> renders in whatever dd/mm/yyyy vs mm/dd/yyyy
+// order the browser/OS locale uses, with no visible label -- typing digits in
+// the "wrong" order (or landing on the wrong segment) silently produces an
+// incomplete value with zero feedback, since onChange only fires once every
+// segment is valid. This formats the underlying value (always ISO
+// yyyy-mm-dd, independent of display locale) into an unambiguous, spelled-out
+// date right next to the field, so a mistyped/incomplete date is immediately
+// visible instead of looking like it worked.
+function formatStopDate(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+const TODAY_ISO = new Date().toISOString().slice(0, 10);
+
 export function NewCampaign() {
   const navigate = useNavigate();
   const { setActiveCampaignId, refresh } = useCampaignContext();
@@ -205,12 +222,20 @@ export function NewCampaign() {
                     <span className="font-sans text-[13px] text-ink">{city.city_name}</span>
                   </button>
                   {selected && (
-                    <input
-                      type="date"
-                      value={stop.stop_date}
-                      onChange={(e) => setStopDate(city.city_id, e.target.value)}
-                      className="rounded-md border border-line bg-paper-raised px-2 py-1 font-sans text-[12px] text-ink outline-none focus:border-ink/30"
-                    />
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`font-sans text-[12px] ${stop.stop_date ? "text-ink" : "text-ink-muted italic"}`}
+                      >
+                        {stop.stop_date ? formatStopDate(stop.stop_date) : "Pick a date"}
+                      </span>
+                      <input
+                        type="date"
+                        min={TODAY_ISO}
+                        value={stop.stop_date}
+                        onChange={(e) => setStopDate(city.city_id, e.target.value)}
+                        className="rounded-md border border-line bg-paper-raised px-2 py-1 font-sans text-[12px] text-ink outline-none focus:border-ink/30"
+                      />
+                    </div>
                   )}
                 </div>
               );
