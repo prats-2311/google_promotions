@@ -131,6 +131,29 @@ function invalidateCache() {
   cache.clear();
 }
 
+// Guards against firing the Generate Briefs job twice for the same campaign
+// -- caught live in production: two Cloud Run Job executions started 30s
+// apart for one campaign (a double-click, or a page reload racing the first
+// click before isGenerating had a chance to reflect reality), each running
+// the full 5-city pipeline independently and silently doubling real
+// Dialogflow/Gemini/Parallel API costs for that run. TTL matches the job's
+// own --task-timeout (1 hour) as a self-clearing safety net -- no callback
+// exists from the job on completion, so this can't rely on being told when
+// it's actually done. Same known scope as the read cache above: in-memory,
+// per Cloud Run instance, resets on redeploy.
+const GENERATION_LOCK_TTL_MS = 60 * 60 * 1000;
+const inFlightGenerations = new Map();
+
+function isGenerationInFlight(campaignId) {
+  const expiresAt = inFlightGenerations.get(campaignId);
+  if (!expiresAt) return false;
+  if (Date.now() > expiresAt) {
+    inFlightGenerations.delete(campaignId);
+    return false;
+  }
+  return true;
+}
+
 async function cachedCallTool(path) {
   const hit = cacheGet(path);
   if (hit) {
@@ -303,6 +326,10 @@ app.get("/api/campaigns/:campaignId/cities/:cityId", async (req, res) => {
 app.post("/api/campaigns/:campaignId/generate-briefs", async (req, res) => {
   try {
     const { campaignId } = req.params;
+    if (isGenerationInFlight(campaignId)) {
+      res.status(409).json({ error: "Briefs are already being generated for this campaign." });
+      return;
+    }
     // Fire-and-forget: the Admin API's :run call returns as soon as the job
     // execution has *started*, not once it finishes (real orchestration takes
     // several minutes per city) — so this responds immediately and the
@@ -324,6 +351,7 @@ app.post("/api/campaigns/:campaignId/generate-briefs", async (req, res) => {
       throw new Error(`job trigger failed (${runRes.status}): ${text}`);
     }
     const operation = await runRes.json();
+    inFlightGenerations.set(campaignId, Date.now() + GENERATION_LOCK_TTL_MS);
     res.json({ status: "started", operation: operation.name });
   } catch (err) {
     res.status(502).json({ error: String(err) });

@@ -34,8 +34,14 @@ export async function chatAboutStrategy(messages: ChatMessage[], strategyText: s
   return res.json() as Promise<StrategyChatResponse>;
 }
 
+export class GenerationAlreadyInFlightError extends Error {}
+
 export async function generateBriefs(campaignId: string) {
   const res = await fetch(`/api/campaigns/${campaignId}/generate-briefs`, { method: "POST" });
+  if (res.status === 409) {
+    const body = await res.json().catch(() => null);
+    throw new GenerationAlreadyInFlightError(body?.error || "Briefs are already being generated for this campaign.");
+  }
   if (!res.ok) throw new Error(`generate-briefs failed: ${res.status}`);
   return res.json() as Promise<{ status: string; operation: string }>;
 }

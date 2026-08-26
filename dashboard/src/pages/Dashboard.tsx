@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Clock, MapPin, Sparkles, Loader2 } from "lucide-react";
-import { getCampaignOverview, generateBriefs } from "../lib/api";
+import { getCampaignOverview, generateBriefs, GenerationAlreadyInFlightError } from "../lib/api";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
 import { useCampaignContext } from "../lib/campaignContext";
@@ -46,6 +46,13 @@ export function Dashboard() {
     try {
       await generateBriefs(activeCampaignId);
     } catch (err) {
+      if (err instanceof GenerationAlreadyInFlightError) {
+        // Not actually a failure -- a run is already going for this
+        // campaign (e.g. a double-click, or a previous tab's click still in
+        // flight). Keep polling instead of surfacing an error; the button
+        // already correctly reads "Generating briefs…" either way.
+        return;
+      }
       setTriggerError(String(err));
       setIsGenerating(false);
     }

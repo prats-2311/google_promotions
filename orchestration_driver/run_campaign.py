@@ -306,6 +306,28 @@ def _fetch_campaign_stops(campaign_id: str, identity_token: str) -> list[dict]:
     return resp.json()["stops"]
 
 
+_MIN_PLAUSIBLE_ENTHUSIASM_SCORE = 1.0
+_LOW_CONFIDENCE_DEFAULT_ENTHUSIASM_SCORE = 35.0
+
+
+def _sanitize_enthusiasm_score(score) -> float:
+    """The Fan Enthusiasm Agent playbook's own instructions say to "return a
+    low-confidence default" when no curated fan_signals row exists, but
+    never pin down what that default actually IS on the real 0-100 scale --
+    leaving the model free to invent a number. In practice this has produced
+    garbage-scale values (observed: 0.2, clearly a 0-1-scale guess, not
+    0-100). Deterministic code-side clamp instead of trusting the model's
+    numeric judgment here, same "LLM reasons, code acts" split already used
+    for brief synthesis and the live-search fallbacks in this driver."""
+    try:
+        value = float(score)
+    except (TypeError, ValueError):
+        return _LOW_CONFIDENCE_DEFAULT_ENTHUSIASM_SCORE
+    if value < _MIN_PLAUSIBLE_ENTHUSIASM_SCORE or value > 100:
+        return _LOW_CONFIDENCE_DEFAULT_ENTHUSIASM_SCORE
+    return round(value, 1)
+
+
 def _brief_already_final(campaign_id: str, city_id: str, identity_token: str) -> bool:
     """A Cloud Run Job container has no `bq` CLI either -- reuse tour_data_api's
     own /city_briefs route (already filters to the latest row per city) rather
@@ -404,6 +426,11 @@ def run_city(
     else:
         print(f"[{city_id}] FAILED to gather culture/enthusiasm/local-delight data within {max_turns} turns")
         return None
+
+    raw_score = collected.get("enthusiasm_score")
+    collected["enthusiasm_score"] = _sanitize_enthusiasm_score(raw_score)
+    if collected["enthusiasm_score"] != raw_score:
+        print(f"[{city_id}] enthusiasm_score {raw_score!r} was implausible — replaced with low-confidence default {collected['enthusiasm_score']}")
 
     # Phase 2: synthesize the brief and run the grounding check deterministically —
     # this is the "code acts" half, avoiding further fragile playbook navigation.
