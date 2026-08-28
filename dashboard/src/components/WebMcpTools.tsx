@@ -10,11 +10,15 @@ interface WebMcpToolResult {
   content: { type: "text"; text: string }[];
 }
 
-// Draft/unstable browser API -- no shipped type defs to target.
-type ToolDefinition = Record<string, unknown> & { registerTool?: (tool: Record<string, unknown>) => unknown };
+// Not using the `webmcp-types` npm package (github.com/GoogleChromeLabs) to
+// avoid a new dependency for one component -- this mirrors its shape
+// closely enough to swap in later if this graduates past origin-trial.
+type ToolDefinition = Record<string, unknown> & {
+  registerTool?: (tool: Record<string, unknown>, options?: { signal?: AbortSignal }) => unknown;
+};
 
 /**
- * WebMCP (https://webmachinelearning.github.io/webmcp/) lets an AI agent
+ * WebMCP (https://developer.chrome.com/docs/ai/webmcp) lets an AI agent
  * running in the SAME browser tab as the visitor -- a sidebar assistant, an
  * extension -- call this page's own functions directly instead of clicking
  * through the UI, via document.modelContext.registerTool(...). It has
@@ -22,13 +26,17 @@ type ToolDefinition = Record<string, unknown> & { registerTool?: (tool: Record<s
  * Intelligence, Fan Enthusiasm, etc.), which talks to Dialogflow CX over
  * HTTP and is completely untouched by this file.
  *
- * The spec is a W3C Draft Community Group Report -- Chrome origin-trial
- * only as of writing, not shipped by default anywhere, no committed Firefox
- * or Safari support. This genuinely can't be verified end-to-end without
- * that trial enabled, so every call here is feature-detected and wrapped so
- * an unsupported browser (almost everyone, right now) pays zero cost: one
- * property check, no script execution, per the spec's own stated best
- * practice ("never throw if the API is absent").
+ * Confirmed live (Chrome 151, 2026-08-28): document.modelContext is still
+ * undefined without a per-origin trial token -- the API has NOT graduated
+ * to default-on. It shipped as a Chrome 149 origin trial (June 2026);
+ * Edge 147+ ships it by default, no trial needed. The entry point moved to
+ * document.modelContext as of the shipped build (navigator.modelContext is
+ * deprecated as of Chrome 150 but kept here as a fallback), and cleanup
+ * moved from a returned unregister() handle to an AbortController passed in
+ * at registration -- registerTool(tool, { signal }), then controller.abort()
+ * -- which is what this file now does. Every call is still feature-detected
+ * and wrapped so an unsupported browser (the default today, everywhere
+ * except an enrolled Chrome 149+/Edge 147+) pays zero cost.
  */
 export function WebMcpTools() {
   const navigate = useNavigate();
@@ -41,13 +49,13 @@ export function WebMcpTools() {
     const registerTool = modelContext?.registerTool;
     if (typeof registerTool !== "function") return;
 
-    const registrations: unknown[] = [];
+    const controller = new AbortController();
     function register(tool: ToolDefinition) {
       try {
-        registrations.push(registerTool!(tool));
+        registerTool!(tool, { signal: controller.signal });
       } catch {
-        // Draft spec -- this browser's shape may not match what we coded
-        // against. Never let a WebMCP registration failure touch the app.
+        // Shape mismatch against whatever this browser actually shipped --
+        // never let a WebMCP registration failure touch the app.
       }
     }
     function textResult(value: unknown): WebMcpToolResult {
@@ -165,15 +173,7 @@ export function WebMcpTools() {
       },
     });
 
-    return () => {
-      for (const reg of registrations) {
-        try {
-          (reg as { unregister?: () => void })?.unregister?.();
-        } catch {
-          // best-effort cleanup only -- exact teardown shape isn't final in the draft spec
-        }
-      }
-    };
+    return () => controller.abort();
   }, [navigate, setActiveCampaignId, refresh]);
 
   return null;
