@@ -46,13 +46,19 @@ export function WebMcpTools() {
     const modelContext =
       (document as unknown as { modelContext?: ToolDefinition }).modelContext ??
       (navigator as unknown as { modelContext?: ToolDefinition }).modelContext;
-    const registerTool = modelContext?.registerTool;
-    if (typeof registerTool !== "function") return;
+    if (typeof modelContext?.registerTool !== "function") return;
+    // registerTool is a native platform-object method -- calling it detached
+    // from modelContext (even via a null-checked local const) throws
+    // "Illegal invocation", since it loses the internal [[this]] binding the
+    // browser's implementation requires. Confirmed live against a real
+    // origin-trial token: this bit us for real, silently, until caught via
+    // the console's [EXCEPTION] log (our own try/catch was swallowing it).
+    const registerTool = modelContext.registerTool.bind(modelContext);
 
     const controller = new AbortController();
     function register(tool: ToolDefinition) {
       try {
-        registerTool!(tool, { signal: controller.signal });
+        registerTool(tool, { signal: controller.signal });
       } catch {
         // Shape mismatch against whatever this browser actually shipped --
         // never let a WebMCP registration failure touch the app.
