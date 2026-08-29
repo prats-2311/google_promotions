@@ -155,7 +155,10 @@ export function WebMcpTools() {
           selected_metrics: [],
           ...input,
         });
-        refresh();
+        // Same race as NewCampaign.tsx's handleSubmit -- must await the
+        // refresh before activating the new id, or the self-heal effect in
+        // campaignContext reverts it right back.
+        await refresh();
         setActiveCampaignId(result.campaign_id);
         navigate("/");
         return textResult(result);

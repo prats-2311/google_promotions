@@ -123,7 +123,11 @@ export function NewCampaign() {
           .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date })),
         selected_metrics: selectedMetrics,
       });
-      refresh();
+      // Must await the campaigns list refresh before setting the new id
+      // active -- otherwise campaignContext's self-heal effect sees the
+      // brand-new campaign missing from the still-stale list and reverts
+      // straight back to whichever campaign was active before.
+      await refresh();
       setActiveCampaignId(result.campaign_id);
       navigate("/");
     } catch (err) {
