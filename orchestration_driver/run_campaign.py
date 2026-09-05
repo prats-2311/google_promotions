@@ -30,6 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 
@@ -73,22 +74,39 @@ def _auth_token(kind: str, audience: str | None = None) -> str:
         return subprocess.check_output(cmd).decode().strip()
 
 
+_DETECT_INTENT_RETRYABLE_STATUS_CODES = {429, 503}
+_DETECT_INTENT_MAX_ATTEMPTS = 3
+_DETECT_INTENT_RETRY_BACKOFF_SECONDS = 2
+
+
 def _detect_intent(session_id: str, text: str, access_token: str) -> dict:
+    """Retries a transient 429/503 from the Playbooks API up to
+    _DETECT_INTENT_MAX_ATTEMPTS times -- a real, observed overload failure
+    mode, distinct from the per-turn execution-budget limitation documented
+    in this module's docstring (that one needs a fresh session, not a
+    retry). A non-retryable status raises immediately."""
     url = f"{API_BASE}/{AGENT_NAME}/sessions/{session_id}:detectIntent"
-    resp = requests.post(
-        url,
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "x-goog-user-project": PROJECT_ID,
-            "Content-Type": "application/json",
-        },
-        json={"queryInput": {"text": {"text": text}, "languageCode": "en"}},
-        timeout=180,
-    )
-    if not resp.ok:
+    last_resp = None
+    for attempt in range(_DETECT_INTENT_MAX_ATTEMPTS):
+        if attempt:
+            time.sleep(_DETECT_INTENT_RETRY_BACKOFF_SECONDS)
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "x-goog-user-project": PROJECT_ID,
+                "Content-Type": "application/json",
+            },
+            json={"queryInput": {"text": {"text": text}, "languageCode": "en"}},
+            timeout=180,
+        )
+        if resp.ok:
+            return resp.json()
         print("DETECT_INTENT ERROR BODY:", resp.text[:2000])
-    resp.raise_for_status()
-    return resp.json()
+        if resp.status_code not in _DETECT_INTENT_RETRYABLE_STATUS_CODES:
+            resp.raise_for_status()
+        last_resp = resp
+    last_resp.raise_for_status()
 
 
 def _actions(resp: dict) -> list[dict]:
@@ -504,15 +522,63 @@ def run_city(
     return delight_card_url
 
 
-if __name__ == "__main__":
-    # CAMPAIGN_ID env var takes precedence -- that's how the Cloud Run Job
-    # execution override passes it in when triggered from the dashboard; the
-    # argv fallback is for local/manual runs.
-    campaign_id = os.environ.get("CAMPAIGN_ID") or (sys.argv[1] if len(sys.argv) > 1 else "nova_horizon_2026")
+# Cities within one campaign are genuinely independent -- each runs its own
+# Dialogflow CX session with no shared state -- so they're dispatched
+# concurrently rather than one-after-another. Bounded rather than unlimited:
+# an unbounded fan-out for a large campaign would hammer the Playbooks API
+# with that many simultaneous detectIntent conversations at once.
+MAX_CONCURRENT_CITIES = int(os.environ.get("MAX_CONCURRENT_CITIES", "3"))
+
+
+def _run_city_safe(
+    stop: dict, campaign_id: str, campaign_title: str, selected_metrics: list[str]
+) -> tuple[str, str | None]:
+    """Isolates one city's failure from the others -- cities run concurrently
+    with no shared state, so one stop's unhandled exception must not take
+    down sibling stops still in flight."""
+    city_id = stop["city_id"]
+    try:
+        url = run_city(city_id, stop["city_name"], campaign_id, stop["stop_date"], campaign_title, selected_metrics)
+        return city_id, url
+    except Exception as e:
+        print(f"[{city_id}] FAILED with an unhandled exception: {e}")
+        return city_id, None
+
+
+def run_campaign(campaign_id: str) -> dict[str, str | None]:
+    """Dispatches every stop in a campaign concurrently -- real event-driven
+    concurrency at the *inter-city* dispatch layer. The *intra-city* agent
+    handoff inside run_city() (Culture Intelligence -> Fan Enthusiasm ->
+    Local Delight) stays sequential on purpose: that ordering exists because
+    of the real per-turn execution-budget and session-navigation platform
+    limitations documented in this module's docstring, and concurrency
+    doesn't fix a platform limit -- it would just mask it under one city's
+    load and still hit it under another's. Only the outer loop -- cities
+    that don't depend on each other's output at all -- benefits from running
+    in parallel."""
     lookup_token = _auth_token("identity", audience=TOUR_DATA_API)
     campaign_title = _fetch_campaign_title(campaign_id, lookup_token)
     stops = _fetch_campaign_stops(campaign_id, lookup_token)
     selected_metrics = _fetch_selected_metrics(campaign_id, lookup_token)
     print(f"[{campaign_id}] {campaign_title!r} — {len(stops)} stop(s) to process, selected_metrics={selected_metrics}")
-    for stop in stops:
-        run_city(stop["city_id"], stop["city_name"], campaign_id, stop["stop_date"], campaign_title, selected_metrics)
+
+    if not stops:
+        return {}
+
+    results: dict[str, str | None] = {}
+    with ThreadPoolExecutor(max_workers=min(MAX_CONCURRENT_CITIES, len(stops))) as executor:
+        futures = [
+            executor.submit(_run_city_safe, stop, campaign_id, campaign_title, selected_metrics) for stop in stops
+        ]
+        for future in as_completed(futures):
+            city_id, delight_card_url = future.result()
+            results[city_id] = delight_card_url
+    return results
+
+
+if __name__ == "__main__":
+    # CAMPAIGN_ID env var takes precedence -- that's how the Cloud Run Job
+    # execution override passes it in when triggered from the dashboard; the
+    # argv fallback is for local/manual runs.
+    campaign_id = os.environ.get("CAMPAIGN_ID") or (sys.argv[1] if len(sys.argv) > 1 else "nova_horizon_2026")
+    run_campaign(campaign_id)
