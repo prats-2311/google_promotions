@@ -27,6 +27,11 @@ See `/cloud_run/CLAUDE.md` for shared conventions (deploy pattern, service accou
 - Always uses `responseSchema` (schema-constrained JSON output), not free-text-then-parse — more reliable than the ad hoc JSON-extraction pattern in `orchestration_driver/run_campaign.py`.
 - Model is `GEMINI_MODEL` env var (default `gemini-2.5-flash`), not hardcoded — change the env var, not the code, if the available model catalog shifts.
 - Requires `tour-data-api-sa` to have project-level `roles/aiplatform.user` — unavoidable, Vertex AI model access isn't resource-scoped (same justification pattern as `roles/bigquery.jobUser`).
+- **Same-bar fallback (2026-09-06):** a transient `429`/`503` on the primary model retries once, then falls back to `GEMINI_FALLBACK_MODEL` (default `gemini-2.0-flash`) — but both paths are forced through the identical `_validate_gemini_response` gate (checks the schema's declared `required` fields actually came back) before a result is accepted. The fallback model doesn't get a lower quality bar just because it's the backup. A non-retryable status (a real prompt/schema bug, e.g. `400`) raises immediately instead of burning two more calls papering over it — see `tests/test_gemini_fallback.py` for the full retry/fallback/validation matrix.
+- **Tiered routing, already present:** all three live-search routes short-circuit before ever calling Gemini when Parallel Search itself returns zero results — the cheapest possible check (did the search find anything at all?) gates the expensive synthesis call. See the comment at the first `if not results:` block in `/live_culture_search`.
+
+## Consumers
+Called by Dialogflow CX Playbooks (via the OpenAPI Tool), the dashboard BFF, `orchestration_driver`, and — as of 2026-09-06 — `cloud_run/agent_mcp_server`, a real MCP server exposing a subset of these routes to *external* callers, not just our own agents. See its own CLAUDE.md.
 
 ## IAM
 `tour-data-api-sa` has a **custom minimal BigQuery role** (`projects/liifecalling-academy/roles/tourDataApiDataAccess`: `datasets.get`, `tables.get`, `tables.getData`, `tables.updateData` only — no schema create/delete/alter/export), applied via the dataset ACL, not a predefined broad role like `WRITER`. See the IAM hardening finding in project memory for why this replaced the original `WRITER` grant.

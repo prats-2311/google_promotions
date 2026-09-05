@@ -41,6 +41,15 @@ _SUPPORTED_CITY_IDS = {"mumbai", "london", "tokyo", "sao_paulo", "new_york"}
 _GCP_PROJECT = os.environ.get("GCP_PROJECT", "liifecalling-academy")
 _VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
 _GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# Same-bar fallback: a transient overload on the primary model shouldn't take
+# down every live-search/synthesis route. GEMINI_FALLBACK_MODEL is only ever
+# reached after the primary has been retried once and still failed with a
+# retryable status -- and its output is forced through the identical
+# _validate_gemini_response gate before being accepted, so the fallback path
+# never gets a lower quality bar than the primary just because it's the
+# backup. See _call_gemini_json.
+_GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash")
+_GEMINI_RETRYABLE_STATUS_CODES = {429, 503}
 _PARALLEL_API_KEY = os.environ.get("PARALLEL_API_KEY")
 # The Parallel partner-track requirement names three qualifying integration
 # paths (official SDK, a supported framework integration, or a Grounding
@@ -177,11 +186,11 @@ def _demographics_search(city_name: str, country: str | None) -> list[dict]:
     ]
 
 
-def _call_gemini_json(prompt: str, response_schema: dict) -> dict:
+def _gemini_request(model: str, prompt: str, response_schema: dict) -> dict:
     url = (
         f"https://{_VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
         f"{_GCP_PROJECT}/locations/{_VERTEX_LOCATION}/publishers/google/models/"
-        f"{_GEMINI_MODEL}:generateContent"
+        f"{model}:generateContent"
     )
     res = requests.post(
         url,
@@ -202,6 +211,47 @@ def _call_gemini_json(prompt: str, response_schema: dict) -> dict:
     import json
 
     return json.loads(text)
+
+
+def _validate_gemini_response(data: dict, response_schema: dict) -> None:
+    """Schema-constrained decoding (responseSchema) only guarantees valid
+    JSON shape, not that every field the caller actually needs came back
+    non-empty -- and a fallback model isn't guaranteed to honor
+    responseSchema as reliably as the primary. Both _call_gemini_json paths
+    are forced through this same check before a result is accepted, so the
+    fallback never clears a lower bar just because it's the backup."""
+    required = response_schema.get("required", [])
+    missing = [key for key in required if key not in data]
+    if missing:
+        raise ValueError(f"Gemini response missing required field(s): {missing}")
+
+
+def _call_gemini_json(prompt: str, response_schema: dict) -> dict:
+    """Primary model, one retry, then GEMINI_FALLBACK_MODEL -- only for the
+    transient overload/rate-limit statuses a retry can plausibly fix. A
+    non-retryable error (a real prompt/schema bug) raises immediately rather
+    than burning two more calls papering over it. See _validate_gemini_response
+    for the bar every attempt's output has to clear before being accepted."""
+    last_error: Exception | None = None
+    attempts = [(_GEMINI_MODEL, 0), (_GEMINI_MODEL, 2), (_GEMINI_FALLBACK_MODEL, 0)]
+    for model, backoff_seconds in attempts:
+        if backoff_seconds:
+            time.sleep(backoff_seconds)
+        try:
+            data = _gemini_request(model, prompt, response_schema)
+            _validate_gemini_response(data, response_schema)
+            return data
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status not in _GEMINI_RETRYABLE_STATUS_CODES:
+                raise
+            last_error = e
+        except (KeyError, ValueError, TypeError) as e:
+            # Malformed/incomplete response shape -- not necessarily transient,
+            # but worth letting the next attempt (retry or fallback model) try
+            # to clear the bar rather than giving up on the first miss.
+            last_error = e
+    raise last_error
 
 
 def _query(sql: str, params: list[bigquery.ScalarQueryParameter]) -> list[bigquery.table.Row]:
@@ -268,6 +318,13 @@ def live_culture_search():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
+    # Tiered routing: the cheapest possible check (did Parallel return
+    # anything at all?) gates the expensive Gemini synthesis call. Zero
+    # results means there's nothing to synthesize from anyway, so this
+    # short-circuits before spending a Gemini call on excerpts that don't
+    # exist -- an honest "low confidence, no data" response instead. The
+    # same gate is repeated in /live_local_delight_search and
+    # /live_city_demographics_search below.
     if not results:
         return jsonify({
             "city_id": _slugify(city_name),
