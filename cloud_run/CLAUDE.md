@@ -1,6 +1,6 @@
 # Cloud Run services — shared conventions
 
-Two services live here: `tour_data_api` (BigQuery + Parallel/Gemini fallback + SDK tool wrappers — see its own CLAUDE.md) and `delight_card_renderer` (renders the final HTML delight card). Both follow the same conventions:
+Three services live here: `tour_data_api` (BigQuery + Parallel/Gemini fallback + SDK tool wrappers — see its own CLAUDE.md), `delight_card_renderer` (renders the final HTML delight card), and `agent_mcp_server` (exposes tour_data_api's own read-only tools as a real MCP server for external callers — see its own CLAUDE.md). All three follow the same conventions:
 
 ## Deploy pattern
 - Source-deployed via buildpacks, not a hand-written Dockerfile: `gcloud run deploy <service> --source=cloud_run/<dir> --region=us-central1 --project=liifecalling-academy --service-account=<dedicated-sa>`.

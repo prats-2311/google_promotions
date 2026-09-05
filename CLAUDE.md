@@ -32,6 +32,7 @@ Goal is not just a valid submission — the intent is to genuinely compete for p
 This root file covers strategy and hackathon-compliance decisions. Directory-specific engineering conventions live in nested `CLAUDE.md` files, checked into the repo, auto-loaded when working in that directory — read the relevant one before making changes there rather than re-deriving conventions from scratch or relying on session memory (memory holds decision *history*; these hold current *how-to*):
 - `cloud_run/CLAUDE.md` — shared Cloud Run conventions (deploy pattern, service accounts, auth between services, the `sdk/` vs `sdk_logic/` duplication)
 - `cloud_run/tour_data_api/CLAUDE.md` — the Parallel Search + Gemini synthesis integration in detail, IAM specifics
+- `cloud_run/agent_mcp_server/CLAUDE.md` — a real MCP server (official `mcp` SDK) exposing `tour_data_api`'s own tools to external callers, not just our internal Playbooks
 - `bigquery/CLAUDE.md` — schema/seed conventions, streaming-buffer gotchas, dataset ACL pattern
 - `agent_builder/CLAUDE.md` — Playbook/Tool provisioning method, auth config, **the PATCH-is-broken platform bug and its delete-and-recreate workaround** (read this before editing any live Playbook)
 - `orchestration_driver/CLAUDE.md` — the "LLM reasons, code acts" architecture, known driver bugs already fixed, session-reset pattern
