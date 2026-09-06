@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Loader2,
   Newspaper,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import { StatMeter } from "../components/ui/StatMeter";
@@ -48,8 +49,9 @@ import {
   synthesizeStopOutcome,
   getStopOutcome,
   saveStopOutcome,
+  getLocalCrewVendors,
 } from "../lib/api";
-import type { MonitorEvent, StopOutcome, VenueNotes } from "../lib/types";
+import type { MonitorEvent, StopOutcome, VenueNotes, LocalCrewVendorsResponse } from "../lib/types";
 
 const DRIFT_POLL_MS = 8000;
 // Real observed trigger-to-result latency is ~60-90s (Parallel actually
@@ -312,6 +314,91 @@ function StopOutcomeCheck({
   );
 }
 
+// Local production ecosystem: a city-level reference fact with no curated
+// seed data, purely on-demand (no persistence) -- staging/lighting/sound
+// rental, catering, and local labor/union requirements for touring crew.
+function LocalCrewVendorsCard({ cityName, accent }: { cityName: string; accent: string }) {
+  const [result, setResult] = useState<LocalCrewVendorsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFind() {
+    setError(null);
+    setLoading(true);
+    try {
+      setResult(await getLocalCrewVendors(cityName));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-paper p-6 lg:col-span-2">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel icon={Wrench} accent={accent} label="Local Crew & Vendors" />
+        <button
+          type="button"
+          onClick={handleFind}
+          disabled={loading}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          {loading ? `Searching in ${cityName}…` : result ? "Refresh" : "Find local crew & vendors"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't search: {error}</p>}
+
+      {!result && !loading && !error && (
+        <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
+          Real, cited staging/lighting/sound rental and catering options in {cityName}, plus any local
+          labor/union requirements for touring crew.
+        </p>
+      )}
+
+      {result && result.vendors.length === 0 && (
+        <p className="mt-3 font-sans text-[12.5px] text-ink-muted">No concrete local vendors found for {cityName}.</p>
+      )}
+
+      {result && result.vendors.length > 0 && (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {result.vendors.map((v, i) => (
+            <div key={i} className="border-t border-line pt-2 first:border-0 first:pt-0">
+              <p className="font-sans text-[13px] text-ink">{v.name}</p>
+              <p className="font-sans text-[11px] uppercase tracking-[0.06em] text-ink-muted">{v.category}</p>
+              {v.note && <p className="mt-1 font-sans text-[12px] leading-relaxed text-ink-muted">{v.note}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {result?.labor_notes && (
+        <p className="mt-3 border-t border-line pt-3 font-sans text-[12.5px] leading-relaxed text-ink-muted">
+          {result.labor_notes}
+        </p>
+      )}
+
+      {result && result.citations.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {result.citations.map((c, i) => (
+            <a
+              key={i}
+              href={c.url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-sans text-[11px] text-ink-muted underline hover:text-ink"
+            >
+              {c.title || c.url}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TRACE_ICON_BY_KIND: Record<TraceStep["kind"], React.ReactNode> = {
   tool: <Wrench className="w-3.5 h-3.5" />,
   playbook: <GitBranch className="w-3.5 h-3.5" />,
@@ -450,6 +537,7 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
       </div>
       {demographicSnapshot && <KeyMetricsCard snapshot={demographicSnapshot} accent={accent} />}
       {venueNotes && <VenueNotesCard notes={venueNotes} accent={accent} />}
+      <LocalCrewVendorsCard cityName={stop.city_name} accent={accent} />
       <div className="lg:col-span-2">
         <CulturalDriftCheck campaignId={campaign.campaign_id} cityId={stop.city_id} cityName={stop.city_name} accent={accent} />
       </div>
@@ -581,6 +669,14 @@ function VenueNotesCard({ notes, accent }: { notes: VenueNotes; accent: string }
       </div>
       {notes.logistics_notes && (
         <p className="mt-3 font-sans text-[13px] leading-relaxed text-ink-muted">{notes.logistics_notes}</p>
+      )}
+      {notes.technical_rider_notes && (
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Technical Rider
+          </p>
+          <p className="font-sans text-[13px] leading-relaxed text-ink-muted">{notes.technical_rider_notes}</p>
+        </div>
       )}
       {(notes.nearest_airport || notes.nearest_railway_station) && (
         <div className="mt-4 grid grid-cols-1 gap-3 border-t border-line pt-3 sm:grid-cols-2">

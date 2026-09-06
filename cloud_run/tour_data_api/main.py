@@ -979,6 +979,105 @@ def discover_venues():
     })
 
 
+def _local_crew_vendor_search(city_name: str, country: str | None) -> list[dict]:
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    place = f"{city_name}, {country}" if country else city_name
+    search = _parallel_client.search(
+        objective=(
+            f"Local production companies in {place} for staging, lighting, and sound rental, plus "
+            f"catering options and any local labor/union requirements for touring crew, relevant to "
+            f"a live musician or actor's event."
+        ),
+        search_queries=[
+            f"{place} staging lighting sound rental",
+            f"{place} event production companies",
+            f"{place} concert crew labor union",
+        ],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+_LOCAL_CREW_VENDORS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "vendors": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "name": {"type": "STRING"},
+                    "category": {"type": "STRING"},
+                    "note": {"type": "STRING", "nullable": True},
+                    "source_url": {"type": "STRING"},
+                },
+                "required": ["name", "category", "note", "source_url"],
+            },
+        },
+        "labor_notes": {"type": "STRING", "nullable": True},
+        "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+    },
+    "required": ["vendors", "labor_notes", "confidence"],
+}
+
+
+@app.post("/local_crew_vendors")
+def local_crew_vendors():
+    """Local production ecosystem: real Parallel Search for actual staging/
+    lighting/sound rental companies, catering options, and local labor/union
+    requirements in a city -- a city-level reference fact with no curated
+    seed data, purely on-demand (no BigQuery persistence, same on-demand
+    shape as the Cultural Drift Check and Post-Show Outcome). Never a
+    fabricated vendor, only ones the search excerpts actually name."""
+    payload = request.get_json(silent=True) or {}
+    city_name = payload.get("city_name")
+    if not city_name:
+        return jsonify({"error": "missing required field: city_name"}), 400
+    country = payload.get("country")
+
+    try:
+        city_name = _validate_place_name(city_name, "city_name")
+        if country:
+            country = _validate_place_name(country, "country")
+    except PlaceNameValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        results = _local_crew_vendor_search(city_name, country)
+    except parallel.APIError as e:
+        return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not results:
+        return jsonify({"source": "parallel_live", "vendors": [], "labor_notes": None, "citations": []})
+
+    excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in results[:8]
+    )
+    prompt = (
+        f"Using ONLY the search excerpts below, list real, distinct local vendors (staging, lighting, "
+        f"sound rental, catering) actually named as operating in or near {city_name}. For each: name, "
+        f"category, a one-sentence note (null if nothing specific to say), and source_url (the exact URL "
+        f"it was mentioned in). Also summarize any real local labor/union requirement for touring crew "
+        f"mentioned in the excerpts as labor_notes (null if nothing found). Never invent a vendor not "
+        f"actually named in the excerpts. Return at most 6 vendors, most relevant first.\n\n"
+        f"SEARCH EXCERPTS:\n{excerpt_block}"
+    )
+    try:
+        synthesized = _call_gemini_json(prompt, _LOCAL_CREW_VENDORS_SCHEMA)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
+
+    return jsonify({
+        "source": "parallel_live",
+        "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        **synthesized,
+    })
+
+
 def _venue_commute_search(city_name: str, venue_name: str | None) -> list[dict]:
     place = f"{venue_name}, {city_name}" if venue_name else city_name
     search = _parallel_client.search(
@@ -1064,21 +1163,24 @@ def extract_venue_info():
             "capacity": {"type": "STRING", "nullable": True},
             "typical_event_format": {"type": "STRING", "nullable": True},
             "logistics_notes": {"type": "STRING", "nullable": True},
+            "technical_rider_notes": {"type": "STRING", "nullable": True},
             "nearest_airport": _VENUE_COMMUTE_FIELDS,
             "nearest_railway_station": _VENUE_COMMUTE_FIELDS,
             "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
         },
         "required": [
-            "capacity", "typical_event_format", "logistics_notes",
+            "capacity", "typical_event_format", "logistics_notes", "technical_rider_notes",
             "nearest_airport", "nearest_railway_station", "confidence",
         ],
     }
     prompt = (
         "Using ONLY the content below, summarize venue capacity, typical event format, and any "
-        "logistics/etiquette notes relevant to a touring musician or actor, plus the nearest major "
-        "airport and nearest railway/train station for touring crew and talent logistics. Use null "
-        "for anything the content doesn't actually support -- never guess a number, distance, or "
-        "travel time. Set confidence to \"low\" if the content is thin or ambiguous.\n\n"
+        "logistics/etiquette notes relevant to a touring musician or actor, plus technical_rider_notes "
+        "-- stage dimensions, rigging, available power, backstage/green room amenities, and loading dock "
+        "access, distinct from the audience-facing logistics_notes above -- and the nearest major airport "
+        "and nearest railway/train station for touring crew and talent logistics. Use null for anything "
+        "the content doesn't actually support -- never guess a number, dimension, distance, or travel "
+        "time. Set confidence to \"low\" if the content is thin or ambiguous.\n\n"
         f"EXTRACTED VENUE PAGE CONTENT:\n{excerpt_block}\n\n"
         f"COMMUTE SEARCH RESULTS:\n{commute_excerpt_block}"
     )

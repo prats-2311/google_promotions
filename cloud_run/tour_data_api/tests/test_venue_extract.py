@@ -36,6 +36,7 @@ def _default_synthesis(prompt=None, schema=None):
         "capacity": "5,000",
         "typical_event_format": "indoor arena show",
         "logistics_notes": "Standard load-in via rear dock.",
+        "technical_rider_notes": "Stage: 40x30ft. 400A power available. Rear loading dock, no forklift on site.",
         "nearest_airport": {"name": "Heathrow", "distance_or_travel_time": "~45 min by car"},
         "nearest_railway_station": {"name": "Wembley Central", "distance_or_travel_time": "10 min walk"},
         "confidence": "medium",
@@ -74,6 +75,7 @@ def test_extracts_and_synthesizes(client, mock_parallel_client, monkeypatch):
     assert body["source"] == "parallel_extract"
     assert body["nearest_airport"]["name"] == "Heathrow"
     assert body["nearest_railway_station"]["name"] == "Wembley Central"
+    assert "40x30ft" in body["technical_rider_notes"]
     assert len(body["citations"]) == 2
 
 

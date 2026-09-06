@@ -454,6 +454,7 @@ paths:
                   capacity: { type: string, nullable: true }
                   typical_event_format: { type: string, nullable: true }
                   logistics_notes: { type: string, nullable: true }
+                  technical_rider_notes: { type: string, nullable: true }
                   nearest_airport:
                     type: object
                     nullable: true
@@ -467,6 +468,54 @@ paths:
                       name: { type: string }
                       distance_or_travel_time: { type: string }
                   confidence: { type: string, enum: [high, medium, low] }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+
+  /local_crew_vendors:
+    post:
+      operationId: localCrewVendors
+      summary: >
+        Local production ecosystem: real Parallel Search for actual
+        staging/lighting/sound rental companies, catering options, and
+        local labor/union requirements in a city -- a city-level reference
+        fact with no curated seed data, purely on-demand (no BigQuery
+        persistence, same on-demand shape as the Cultural Drift Check and
+        Post-Show Outcome). Never a fabricated vendor, only ones the search
+        excerpts actually name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_name]
+              properties:
+                city_name: { type: string }
+                country: { type: string }
+      responses:
+        "200":
+          description: A real, cited list of local vendors (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  vendors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        category: { type: string }
+                        note: { type: string, nullable: true }
+                        source_url: { type: string }
+                  labor_notes: { type: string, nullable: true }
                   citations:
                     type: array
                     items:

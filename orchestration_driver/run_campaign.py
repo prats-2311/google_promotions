@@ -694,22 +694,36 @@ def run_city(
 MAX_CONCURRENT_CITIES = int(os.environ.get("MAX_CONCURRENT_CITIES", "3"))
 
 
+_RUN_CITY_MAX_ATTEMPTS = 2
+
+
 def _run_city_safe(
     stop: dict, campaign_id: str, campaign_title: str, selected_metrics: list[str]
 ) -> tuple[str, str | None]:
     """Isolates one city's failure from the others -- cities run concurrently
     with no shared state, so one stop's unhandled exception must not take
-    down sibling stops still in flight."""
+    down sibling stops still in flight. Retries the whole city once: a
+    total gather-loop or grounding-check exhaustion inside run_city() can be
+    genuine Dialogflow CX Playbook-navigation flakiness under concurrent
+    load rather than a real, reproducible problem with this city --
+    empirically confirmed live (2026-09-06): a city that exhausted its
+    10-turn budget inside a 3-city concurrent run succeeded cleanly in 3
+    turns on an immediate solo re-run of the identical city."""
     city_id = stop["city_id"]
-    try:
-        url = run_city(
-            city_id, stop["city_name"], campaign_id, stop["stop_date"], campaign_title,
-            selected_metrics, stop.get("venue_url"),
-        )
-        return city_id, url
-    except Exception as e:
-        print(f"[{city_id}] FAILED with an unhandled exception: {e}")
-        return city_id, None
+    for attempt in range(_RUN_CITY_MAX_ATTEMPTS):
+        try:
+            url = run_city(
+                city_id, stop["city_name"], campaign_id, stop["stop_date"], campaign_title,
+                selected_metrics, stop.get("venue_url"),
+            )
+        except Exception as e:
+            print(f"[{city_id}] attempt {attempt + 1} FAILED with an unhandled exception: {e}")
+            url = None
+        if url:
+            return city_id, url
+        if attempt + 1 < _RUN_CITY_MAX_ATTEMPTS:
+            print(f"[{city_id}] attempt {attempt + 1} produced no brief -- retrying once")
+    return city_id, None
 
 
 def run_campaign(campaign_id: str) -> dict[str, str | None]:

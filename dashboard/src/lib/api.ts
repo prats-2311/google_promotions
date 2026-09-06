@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse } from "./types";
 
 // Defense in depth alongside the BFF's own callTool timeout (server/index.js)
 // -- a request that somehow hangs past this still rejects instead of leaving
@@ -97,6 +97,17 @@ export async function saveStopOutcome(campaignId: string, cityId: string, outcom
   });
   if (!res.ok) throw new Error(`save stop outcome failed: ${res.status}`);
   return res.json() as Promise<{ campaign_id: string; city_id: string; status: string }>;
+}
+
+export async function getLocalCrewVendors(cityName: string, country?: string | null) {
+  const res = await fetch("/api/local-crew-vendors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ city_name: cityName, ...(country ? { country } : {}) }),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) throw new Error(`local crew & vendors lookup failed: ${res.status}`);
+  return res.json() as Promise<LocalCrewVendorsResponse>;
 }
 
 export async function discoverVenues(cityName: string, country?: string | null) {

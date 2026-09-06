@@ -155,6 +155,7 @@ export interface VenueNotes {
   capacity: string | null;
   typical_event_format: string | null;
   logistics_notes: string | null;
+  technical_rider_notes: string | null;
   nearest_airport: VenueCommutePoint | null;
   nearest_railway_station: VenueCommutePoint | null;
   confidence: "high" | "medium" | "low";
@@ -171,6 +172,20 @@ export interface DiscoveredVenue {
 export interface VenueDiscoveryResponse {
   source: string;
   venues: DiscoveredVenue[];
+  citations: MonitorCitation[];
+}
+
+export interface LocalVendor {
+  name: string;
+  category: string;
+  note: string | null;
+  source_url: string;
+}
+
+export interface LocalCrewVendorsResponse {
+  source: string;
+  vendors: LocalVendor[];
+  labor_notes: string | null;
   citations: MonitorCitation[];
 }
 

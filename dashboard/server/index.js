@@ -491,6 +491,19 @@ app.post("/api/stop-outcomes", async (req, res) => {
   }
 });
 
+app.post("/api/local-crew-vendors", async (req, res) => {
+  try {
+    const result = await callTool("/local_crew_vendors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.post("/api/discover-venues", async (req, res) => {
   try {
     const result = await callTool("/discover_venues", {
