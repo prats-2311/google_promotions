@@ -6,6 +6,7 @@ import { CheckCircle2, Clock, MapPin, Sparkles, Loader2 } from "lucide-react";
 import { getCampaignOverview, generateBriefs, GenerationAlreadyInFlightError } from "../lib/api";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
+import { CueCard } from "../components/ui/CueCard";
 import { useCampaignContext } from "../lib/campaignContext";
 import { DashboardSkeleton } from "../components/ui/Skeletons";
 
@@ -103,21 +104,12 @@ export function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
             >
-              <Link
-                to={`/city/${city.city_id}`}
-                className="group block overflow-hidden rounded-2xl bg-paper shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_32px_-16px_rgba(0,0,0,0.5)] transition-transform hover:-translate-y-1"
-              >
-                <div className="h-1.5" style={{ backgroundColor: accent }} />
-                <div className="p-5">
+              <Link to={`/city/${city.city_id}`} className="group block transition-transform hover:-translate-y-1">
+                <CueCard accent={accent} meta={`Stop ${city.sequence_order} · ${city.stop_date}`}>
                   <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-sans text-[11px] uppercase tracking-[0.1em] text-ink-muted">
-                        Stop {city.sequence_order} · {city.stop_date}
-                      </p>
-                      <h2 className="mt-0.5 font-display text-[22px] text-ink">{city.city_name}</h2>
-                    </div>
+                    <h2 className="font-display text-[22px] text-ink">{city.city_name}</h2>
                     <span
-                      className={`flex items-center gap-1 rounded-full px-2 py-1 font-sans text-[10px] font-medium ${
+                      className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1 font-sans text-[10px] font-medium ${
                         isFinal ? "bg-emerald-900/10 text-emerald-800" : "bg-black/5 text-ink-muted"
                       }`}
                     >
@@ -137,7 +129,7 @@ export function Dashboard() {
                     <MapPin size={12} />
                     <span>View city intelligence &amp; delight card</span>
                   </div>
-                </div>
+                </CueCard>
               </Link>
             </motion.div>
           );

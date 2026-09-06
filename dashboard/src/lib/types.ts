@@ -21,6 +21,7 @@ export interface CityOverview extends CampaignStop {
   enthusiasm_score: number | null;
   grounding_check_passed: boolean | null;
   delight_card_url: string | null;
+  city_importance_tier: string | null;
 }
 
 export interface CampaignOverview {

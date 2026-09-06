@@ -1,7 +1,12 @@
 import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse } from "./types";
 
+// Defense in depth alongside the BFF's own callTool timeout (server/index.js)
+// -- a request that somehow hangs past this still rejects instead of leaving
+// a query stuck on its loading skeleton forever with nothing to show.
+const REQUEST_TIMEOUT_MS = 30000;
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+  const res = await fetch(path, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
   return res.json();
 }
@@ -19,6 +24,7 @@ export async function createCampaign(input: NewCampaignInput) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`create campaign failed: ${res.status}`);
   return res.json() as Promise<{ campaign_id: string; status: string }>;
@@ -29,6 +35,7 @@ export async function chatAboutStrategy(messages: ChatMessage[], strategyText: s
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, strategy_text: strategyText }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`campaign strategy chat failed: ${res.status}`);
   return res.json() as Promise<StrategyChatResponse>;
@@ -37,7 +44,10 @@ export async function chatAboutStrategy(messages: ChatMessage[], strategyText: s
 export class GenerationAlreadyInFlightError extends Error {}
 
 export async function generateBriefs(campaignId: string) {
-  const res = await fetch(`/api/campaigns/${campaignId}/generate-briefs`, { method: "POST" });
+  const res = await fetch(`/api/campaigns/${campaignId}/generate-briefs`, {
+    method: "POST",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (res.status === 409) {
     const body = await res.json().catch(() => null);
     throw new GenerationAlreadyInFlightError(body?.error || "Briefs are already being generated for this campaign.");
@@ -55,6 +65,7 @@ export async function rankCities(cityRecords: { city_id: string; enthusiasm_scor
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ city_records: cityRecords }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`rank-cities failed: ${res.status}`);
   return res.json() as Promise<{ ranked: Array<{ city_id: string; enthusiasm_score: number; city_importance_tier: string; strategic_rank: number }> }>;

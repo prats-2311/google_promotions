@@ -72,9 +72,18 @@ async function getAccessToken() {
   return cachedAccessToken;
 }
 
+// A hung upstream call (cold Cloud Run instance, a stuck query) with no
+// timeout means a route's Promise never settles -- the dashboard's query
+// then sits on its loading skeleton forever with no error to show and no way
+// out. 30s is generous for any real tour_data_api route (BigQuery lookups
+// finish in ~1s; the slowest real path, live Parallel Search + Gemini
+// synthesis, finishes well under this) but still bounds every hang.
+const CALL_TOOL_TIMEOUT_MS = 30000;
+
 async function callTool(path, options = {}) {
   const res = await fetch(`${TOUR_DATA_API}${path}`, {
     ...options,
+    signal: options.signal ?? AbortSignal.timeout(CALL_TOOL_TIMEOUT_MS),
     headers: {
       ...options.headers,
       Authorization: `Bearer ${await getIdentityToken()}`,
@@ -251,6 +260,17 @@ app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
     const cities = await Promise.all(
       stopsResp.stops.map(async (stop) => {
         const brief = briefByCity[stop.city_id];
+        // city_importance_tier lives on fan_signals, not on city_briefs --
+        // fetched here regardless of brief status so Compare Cities gets the
+        // real curated tier instead of guessing one from the score (see
+        // CompareCities.tsx's former tierFromScore(), removed for this).
+        // One fetch covers both the tier (always) and the pending-city
+        // preview score (fallback branch below) -- fan_signals carries both
+        // fields in the same response.
+        const signal = await cachedCallTool(
+          `/fan_signals?city_id=${stop.city_id}&genre=${encodeURIComponent(campaign.genre)}&artist_type=${artistTypeFor(campaign.campaign_type)}`
+        ).catch(() => null);
+        const tier = signal?.city_importance_tier ?? null;
         if (brief) {
           return {
             ...stop,
@@ -258,18 +278,19 @@ app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
             enthusiasm_score: brief.enthusiasm_score,
             grounding_check_passed: brief.grounding_check_passed,
             delight_card_url: brief.delight_card_url,
+            city_importance_tier: tier,
           };
         }
         // No finalized brief yet — fall back to the raw fan signal so the
         // dashboard can still show a preview score for a pending city.
-        try {
-          const signal = await cachedCallTool(
-            `/fan_signals?city_id=${stop.city_id}&genre=${encodeURIComponent(campaign.genre)}&artist_type=${artistTypeFor(campaign.campaign_type)}`
-          );
-          return { ...stop, status: "pending", enthusiasm_score: signal.enthusiasm_score, grounding_check_passed: null, delight_card_url: null };
-        } catch {
-          return { ...stop, status: "pending", enthusiasm_score: null, grounding_check_passed: null, delight_card_url: null };
-        }
+        return {
+          ...stop,
+          status: "pending",
+          enthusiasm_score: signal?.enthusiasm_score ?? null,
+          grounding_check_passed: null,
+          delight_card_url: null,
+          city_importance_tier: tier,
+        };
       })
     );
 

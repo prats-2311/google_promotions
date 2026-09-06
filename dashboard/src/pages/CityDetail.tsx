@@ -31,6 +31,7 @@ import { deriveTrace } from "../lib/deriveTrace";
 import { useCampaignContext } from "../lib/campaignContext";
 import { CityDetailSkeleton } from "../components/ui/Skeletons";
 import { Accordion } from "../components/ui/Accordion";
+import { CueCard } from "../components/ui/CueCard";
 
 const TRACE_ICON_BY_KIND: Record<TraceStep["kind"], React.ReactNode> = {
   tool: <Wrench className="w-3.5 h-3.5" />,
@@ -242,34 +243,31 @@ function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) 
   const { localDelight, brief } = data;
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
-      <div className="lg:col-span-3 rounded-2xl bg-paper overflow-hidden">
-        <div className="h-1.5" style={{ backgroundColor: accent }} />
-        <div className="p-6">
-          <SectionLabel icon={Sparkles} accent={accent} label="Local Language Moment" />
-          <div className="mt-3 space-y-3">
-            {localDelight.local_phrases.map((p, i) => (
-              <div key={i} className="flex items-baseline justify-between gap-3 border-b border-line pb-2 last:border-0">
-                <span className="font-display text-[16px] text-ink">{p.phrase}</span>
-                <span className="text-right font-sans text-[12px] italic text-ink-muted">{p.meaning}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6">
-            <SectionLabel icon={Landmark} accent={accent} label="Beloved Icons &amp; References" />
-            <Accordion
-              className="mt-1"
-              accent={accent}
-              type="multiple"
-              items={localDelight.beloved_icons.map((icon, i) => ({
-                id: `${icon.name}-${i}`,
-                title: icon.name,
-                content: icon.reference_note,
-              }))}
-            />
-          </div>
+      <CueCard className="lg:col-span-3" accent={accent} meta={`${data.campaign.title} · Delight Card`}>
+        <SectionLabel icon={Sparkles} accent={accent} label="Local Language Moment" />
+        <div className="mt-3 space-y-3">
+          {localDelight.local_phrases.map((p, i) => (
+            <div key={i} className="flex items-baseline justify-between gap-3 border-b border-line pb-2 last:border-0">
+              <span className="font-display text-[16px] text-ink">{p.phrase}</span>
+              <span className="text-right font-sans text-[12px] italic text-ink-muted">{p.meaning}</span>
+            </div>
+          ))}
         </div>
-      </div>
+
+        <div className="mt-6">
+          <SectionLabel icon={Landmark} accent={accent} label="Beloved Icons &amp; References" />
+          <Accordion
+            className="mt-1"
+            accent={accent}
+            type="multiple"
+            items={localDelight.beloved_icons.map((icon, i) => ({
+              id: `${icon.name}-${i}`,
+              title: icon.name,
+              content: icon.reference_note,
+            }))}
+          />
+        </div>
+      </CueCard>
 
       <div className="lg:col-span-2 space-y-5">
         <div className="rounded-2xl bg-paper p-6">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
@@ -18,15 +18,16 @@ interface RankedCity {
 
 async function loadComparison(campaignId: string) {
   const overview = await getCampaignOverview(campaignId);
-  // Need each city's tier — the overview doesn't carry it, so pull it from
-  // the tier already known per-city via a lightweight re-fetch isn't
-  // available here; approximate tier bucket from score for ranking input
-  // is wrong — instead call rank_cities with what we have plus a tier
-  // derived the same way the SDK does server-side as a fallback.
+  // city_importance_tier now comes from the overview itself -- the BFF's
+  // /overview route fetches each city's real fan_signals record (server/
+  // index.js), so this is the actual curated tier, not a score-bucket guess.
+  // A city can still genuinely lack a tier (no fan_signals row at all for an
+  // unseeded city/genre combo) -- "Unranked" says that honestly rather than
+  // inventing one.
   const records = overview.cities.map((c) => ({
     city_id: c.city_id,
     enthusiasm_score: c.enthusiasm_score ?? 0,
-    city_importance_tier: tierFromScore(c.enthusiasm_score ?? 0),
+    city_importance_tier: c.city_importance_tier ?? "Unranked",
   }));
   const result = await rankCities(records);
   const byId = Object.fromEntries(overview.cities.map((c) => [c.city_id, c.city_name]));
@@ -34,25 +35,54 @@ async function loadComparison(campaignId: string) {
   return { overview, ranked };
 }
 
+// After this long, the plain skeleton stops looking like normal loading and
+// starts looking broken with no way to tell the difference -- surface an
+// honest "still working" note instead of leaving it silent. The 30s request
+// timeout (lib/api.ts) is what actually bounds a genuine hang; this is just
+// about not leaving the person staring at nothing in the meantime.
+const SLOW_LOAD_NOTICE_MS = 6000;
+
 export function CompareCities() {
   const { activeCampaignId } = useCampaignContext();
   const [view, setView] = useState<"chart" | "table">("chart");
   const [hovered, setHovered] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false);
   const reduceMotion = useReducedMotion();
 
-  const { data, error } = useQuery({
+  const { data, error, isFetching } = useQuery({
     queryKey: ["compareCities", activeCampaignId],
     queryFn: () => loadComparison(activeCampaignId),
   });
 
+  useEffect(() => {
+    if (!isFetching) {
+      setSlow(false);
+      return;
+    }
+    const t = setTimeout(() => setSlow(true), SLOW_LOAD_NOTICE_MS);
+    return () => clearTimeout(t);
+  }, [isFetching]);
+
   if (error) {
     return (
       <div className="rounded-xl border border-red-900/30 bg-red-950/20 px-4 py-3 font-sans text-[13px] text-red-200">
-        Couldn't load the comparison: {String(error)}
+        Couldn't load the comparison. Reload the page to try again.
+        <p className="mt-1 font-mono text-[11px] text-red-300/70">{String(error)}</p>
       </div>
     );
   }
-  if (!data) return <CompareCitiesSkeleton />;
+  if (!data) {
+    return (
+      <div>
+        <CompareCitiesSkeleton />
+        {slow && (
+          <p className="mt-4 text-center font-sans text-[12px] text-canvas-muted">
+            Still working on it — this shouldn't take more than a few seconds.
+          </p>
+        )}
+      </div>
+    );
+  }
   const { overview, ranked } = data;
 
   const maxScore = Math.max(...ranked.map((r) => r.enthusiasm_score), 1);
@@ -150,12 +180,6 @@ export function CompareCities() {
       </div>
     </motion.div>
   );
-}
-
-function tierFromScore(score: number): string {
-  if (score >= 85) return "Tier 1";
-  if (score >= 70) return "Tier 2";
-  return "Tier 3";
 }
 
 function ViewToggle({

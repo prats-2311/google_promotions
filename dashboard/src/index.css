@@ -7,10 +7,15 @@
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
 
 @theme {
   --font-display: "Fraunces", ui-serif, Georgia, serif;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Stamped/slate treatment on CueCard's meta line -- a call-sheet's
+     typewritten fields, not a UI label. Used sparingly, never for body copy. */
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
 
   /* Cinema ops room: dark canvas shell, warm paper content surfaces. */
   --color-canvas: #101014;
