@@ -20,14 +20,22 @@ from google.cloud import storage
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "templates")
 _ENV = Environment(loader=FileSystemLoader(_TEMPLATE_DIR), autoescape=True)
 
+# Kept in sync with dashboard/src/lib/cityTheme.ts's CITY_ACCENT_DARK -- this
+# renderer produces a static HTML artifact with its own inline CSS (no
+# shared build step with the dashboard), so there's no automated way to
+# import the same values; a hand-sync is the whole story here, same
+# duplication discipline as cloud_run/tour_data_api/sdk_logic/ (see
+# cloud_run/CLAUDE.md). Re-validated 2026-09-07 for "Premiere Neon" via the
+# dataviz skill's validate_palette.js -- see cityTheme.ts's own comment for
+# the exact validator invocation.
 _ACCENT_BY_CITY = {
-    "mumbai": "#c9622b",
-    "london": "#2c4a63",
-    "tokyo": "#8b3a52",
-    "sao_paulo": "#2f7d5a",
-    "new_york": "#3a3f8f",
+    "mumbai": "#ff3d00",
+    "london": "#0091ea",
+    "tokyo": "#ff00aa",
+    "sao_paulo": "#009e5c",
+    "new_york": "#7c4dff",
 }
-_DEFAULT_ACCENT = "#3a3f8f"
+_DEFAULT_ACCENT = "#7c4dff"
 
 
 def _render_html(brief: dict) -> str:

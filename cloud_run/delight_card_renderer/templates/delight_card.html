@@ -6,16 +6,16 @@
 <style>
   :root {
     --accent: {{ accent_color }};
-    --ink: #14151a;
-    --paper: #fbfaf7;
-    --line: rgba(20,21,26,0.10);
-    --muted: rgba(20,21,26,0.58);
+    --ink: #0a0a0a;
+    --paper: #ffffff;
+    --line: rgba(10,10,10,0.10);
+    --muted: rgba(10,10,10,0.55);
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: #e9e7e1;
-    font-family: "Iowan Old Style", "Georgia", ui-serif, serif;
+    background: #08080a;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
     color: var(--ink);
     display: flex;
     justify-content: center;
@@ -25,9 +25,9 @@
     width: 100%;
     max-width: 620px;
     background: var(--paper);
-    border-radius: 20px;
+    border-radius: 6px;
     border: 1px solid var(--line);
-    box-shadow: 0 1px 2px rgba(20,21,26,0.06), 0 24px 48px -24px rgba(20,21,26,0.35);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
     overflow: hidden;
   }
   .card__band {
@@ -50,9 +50,12 @@
     margin: 0 0 6px;
   }
   .card__city {
-    font-size: 34px;
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 32px;
     margin: 0;
-    font-weight: 500;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
   }
   .card__date {
     font-family: "Helvetica Neue", Arial, sans-serif;
@@ -107,7 +110,7 @@
     border-radius: 50%;
     background: var(--accent);
   }
-  ul.avoid li::before { background: #b3413a; }
+  ul.avoid li::before { background: #ef1f34; }
   .heat {
     display: flex;
     align-items: center;
