@@ -133,6 +133,14 @@ def get_city_briefs(campaign_id: str, city_id: str = "") -> dict:
 
 
 @mcp.tool()
+def get_stop_safety_checklist(campaign_id: str, city_id: str) -> dict:
+    """Get the planner-filled day-of-show safety checklist for one campaign stop:
+    showstop manager assignment/name and venue capacity confirmation. Not
+    AI-generated -- a manual record, null fields if nothing's been filled in yet."""
+    return _get("/stop_safety_checklist", {"campaign_id": campaign_id, "city_id": city_id})
+
+
+@mcp.tool()
 def rank_cities(cities: list[dict]) -> dict:
     """Rank a list of cities by enthusiasm score and importance tier. Pure compute -- no data lookup, no side effects."""
     return _post("/rank_cities", {"cities": cities})

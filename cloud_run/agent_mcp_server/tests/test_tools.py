@@ -122,6 +122,31 @@ def test_get_city_briefs_includes_city_id_when_given(monkeypatch):
     assert kwargs["params"] == {"campaign_id": "c1", "city_id": "tokyo"}
 
 
+def test_get_stop_safety_checklist_passes_campaign_and_city_id_params(monkeypatch):
+    monkeypatch.setattr(main, "_identity_token", lambda audience: "fake-token")
+    mock_get = MagicMock(
+        return_value=_fake_response(
+            {
+                "campaign_id": "c1",
+                "city_id": "tokyo",
+                "generated_at": "2026-09-07T00:00:00+00:00",
+                "showstop_manager_assigned": True,
+                "showstop_manager_name": "Jordan Blake",
+                "capacity_confirmed": True,
+            }
+        )
+    )
+    monkeypatch.setattr(main.requests, "get", mock_get)
+
+    result = main.get_stop_safety_checklist("c1", "tokyo")
+
+    assert result["showstop_manager_name"] == "Jordan Blake"
+    args, kwargs = mock_get.call_args
+    assert args[0] == f"{main.TOUR_DATA_API}/stop_safety_checklist"
+    assert kwargs["params"] == {"campaign_id": "c1", "city_id": "tokyo"}
+    assert kwargs["headers"]["Authorization"] == "Bearer fake-token"
+
+
 def test_rank_cities_posts_cities_payload(monkeypatch):
     monkeypatch.setattr(main, "_identity_token", lambda audience: "fake-token")
     mock_post = MagicMock(return_value=_fake_response({"ranked": []}))
@@ -150,5 +175,6 @@ def test_all_read_tools_are_registered_with_the_mcp_server():
         "get_fan_signals",
         "get_local_delight",
         "get_city_briefs",
+        "get_stop_safety_checklist",
         "rank_cities",
     }
