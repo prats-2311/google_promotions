@@ -81,11 +81,13 @@ def test_gemini_failure_returns_502(client, monkeypatch):
     assert res.status_code == 502
 
 
-def test_only_supported_city_ids_are_offered_to_the_model(mock_parallel_client, monkeypatch):
+def test_only_supported_city_ids_are_offered_to_the_model(mock_parallel_client, mock_bq, monkeypatch):
     """Regression guard: the prompt must constrain suggestions to cities the
     rest of the system actually supports (POST /campaign_stops rejects
     anything else) -- never let the model suggest an unsupported city."""
     captured = {}
+    known_city_ids = ["mumbai", "london", "tokyo", "sao_paulo", "new_york"]
+    mock_bq.query.return_value.result.return_value = [{"city_id": cid} for cid in known_city_ids]
 
     def fake_gemini(prompt, schema):
         captured["prompt"] = prompt
@@ -96,5 +98,5 @@ def test_only_supported_city_ids_are_offered_to_the_model(mock_parallel_client, 
     m.app.test_client().post("/campaign_strategy_chat", json={
         "messages": [{"role": "user", "content": "hello"}]
     })
-    for city_id in main._SUPPORTED_CITY_IDS:
+    for city_id in known_city_ids:
         assert city_id in captured["prompt"]

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -20,6 +20,12 @@ import {
   GitBranch,
   MessageCircle,
   BarChart3,
+  Building2,
+  RadioTower,
+  RefreshCw,
+  Loader2,
+  Newspaper,
+  type LucideIcon,
 } from "lucide-react";
 import { StatMeter } from "../components/ui/StatMeter";
 import { getCityDetail } from "../lib/api";
@@ -32,6 +38,277 @@ import { useCampaignContext } from "../lib/campaignContext";
 import { CityDetailSkeleton } from "../components/ui/Skeletons";
 import { Accordion } from "../components/ui/Accordion";
 import { CueCard } from "../components/ui/CueCard";
+import { AudioPlayButton } from "../components/ui/AudioPlayButton";
+import {
+  createCityMonitor,
+  triggerCityMonitor,
+  getCityMonitorEvents,
+  synthesizeStopOutcome,
+  getStopOutcome,
+  saveStopOutcome,
+} from "../lib/api";
+import type { MonitorEvent, StopOutcome, VenueNotes } from "../lib/types";
+
+const DRIFT_POLL_MS = 8000;
+// Real observed trigger-to-result latency is ~60-90s (Parallel actually
+// searches and reasons over live results, it doesn't return instantly) --
+// 12 polls at 8s gives ~96s before giving up and reporting "no updates
+// found yet" rather than polling forever.
+const DRIFT_MAX_POLLS = 12;
+
+// Continuous grounding: a brief is generated once, weeks before a tour date
+// -- this is the one thing in the whole app that can tell you what's
+// changed in a city *since* generation, because it's backed by a real
+// Parallel Monitor rather than a static document. Genuinely can't exist as
+// a one-shot feature.
+function CulturalDriftCheck({
+  campaignId,
+  cityId,
+  cityName,
+  accent,
+  monitorType = "cultural",
+  label = "Cultural Drift Check",
+  icon = RadioTower,
+  noDriftMessage,
+}: {
+  campaignId: string;
+  cityId: string;
+  cityName: string;
+  accent: string;
+  monitorType?: "cultural" | "safety";
+  label?: string;
+  icon?: LucideIcon;
+  noDriftMessage?: string;
+}) {
+  const [monitorId, setMonitorId] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
+  const [events, setEvents] = useState<MonitorEvent[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: eventsData, dataUpdatedAt } = useQuery({
+    queryKey: ["cityMonitorEvents", monitorId],
+    queryFn: () => getCityMonitorEvents(monitorId as string),
+    enabled: Boolean(monitorId) && checking,
+    refetchInterval: checking ? DRIFT_POLL_MS : false,
+  });
+
+  useEffect(() => {
+    // dataUpdatedAt (not eventsData) drives this effect: React Query's
+    // structural sharing returns the SAME object reference across polls
+    // whenever consecutive responses are content-identical (e.g. repeated
+    // {events: []} while nothing has changed yet), so keying off eventsData
+    // silently stops firing after the first empty poll. dataUpdatedAt ticks
+    // on every fetch regardless of content.
+    if (!checking || !eventsData) return;
+    if (eventsData.events.length > 0) {
+      setEvents(eventsData.events);
+      setChecking(false);
+      return;
+    }
+    setPollCount((c) => {
+      const next = c + 1;
+      if (next >= DRIFT_MAX_POLLS) {
+        setChecking(false);
+        setEvents([]);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataUpdatedAt]);
+
+  async function handleCheck() {
+    setError(null);
+    setEvents(null);
+    setPollCount(0);
+    try {
+      const { monitor_id } = await createCityMonitor(campaignId, cityId, cityName, monitorType);
+      setMonitorId(monitor_id);
+      await triggerCityMonitor(monitor_id);
+      setChecking(true);
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-paper p-6">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel icon={icon} accent={accent} label={label} />
+        <button
+          type="button"
+          onClick={handleCheck}
+          disabled={checking}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {checking ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {checking ? `Checking… (${pollCount + 1}/${DRIFT_MAX_POLLS})` : "Check for updates"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check for updates: {error}</p>}
+
+      {!checking && events === null && !error && (
+        <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
+          This brief reflects real, cited data as of when it was generated. Run a live check against Parallel's
+          continuous monitoring to see whether anything relevant has changed since.
+        </p>
+      )}
+
+      {!checking && events !== null && events.length === 0 && (
+        <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
+          {noDriftMessage ?? `Checked just now — no notable cultural or news drift found for ${cityName}.`}
+        </p>
+      )}
+
+      {events && events.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {events.map((event, i) => (
+            <div key={i} className="border-t border-line pt-3 first:border-0 first:pt-0">
+              {event.event_date && (
+                <p className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-ink-muted">
+                  {event.event_date}
+                </p>
+              )}
+              <p className="mt-1 font-sans text-[13px] leading-relaxed text-ink">{event.summary}</p>
+              {event.citations.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {event.citations.map((c, j) => (
+                    <a
+                      key={j}
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-sans text-[11px] text-ink-muted underline hover:text-ink"
+                    >
+                      {c.title || c.url}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Post-tour retrospective: distinct from city_briefs.enthusiasm_score, which
+// is only ever a pre-show prediction -- this is a real, live-searched
+// after-the-fact result, only meaningful once the stop's date has passed.
+// Persisted via /stop_outcomes so a re-visit doesn't need to re-search.
+function StopOutcomeCheck({
+  campaignId,
+  cityId,
+  cityName,
+  campaignTitle,
+  stopDate,
+  accent,
+}: {
+  campaignId: string;
+  cityId: string;
+  cityName: string;
+  campaignTitle: string;
+  stopDate: string;
+  accent: string;
+}) {
+  const isPast = new Date(stopDate) < new Date();
+  const { data: cached } = useQuery({
+    queryKey: ["stopOutcome", campaignId, cityId],
+    queryFn: () => getStopOutcome(campaignId, cityId),
+    enabled: isPast,
+  });
+
+  const [outcome, setOutcome] = useState<StopOutcome | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!cached?.outcome_json) return;
+    try {
+      setOutcome(JSON.parse(cached.outcome_json));
+    } catch {
+      // malformed cached row -- fall through to letting the user re-check
+    }
+  }, [cached]);
+
+  async function handleCheck() {
+    setError(null);
+    setChecking(true);
+    try {
+      const result = await synthesizeStopOutcome(campaignId, cityId, cityName, campaignTitle, stopDate);
+      setOutcome(result);
+      await saveStopOutcome(campaignId, cityId, result);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  if (!isPast) return null;
+
+  const sentimentClass =
+    outcome?.sentiment === "positive"
+      ? "text-emerald-700"
+      : outcome?.sentiment === "negative"
+        ? "text-red-700"
+        : "text-ink-muted";
+
+  return (
+    <div className="rounded-2xl bg-paper p-6">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel icon={Newspaper} accent={accent} label="Post-Show Outcome" />
+        <button
+          type="button"
+          onClick={handleCheck}
+          disabled={checking}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {checking ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {checking ? "Checking real reaction…" : outcome ? "Re-check" : "Check real outcome"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check outcome: {error}</p>}
+
+      {!outcome && !checking && !error && (
+        <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
+          This stop's date has passed. Run a live search for real press or fan reaction — distinct from the
+          pre-show enthusiasm prediction above.
+        </p>
+      )}
+
+      {outcome && (
+        <div className="mt-3">
+          <p className={`font-sans text-[12px] font-medium uppercase tracking-[0.06em] ${sentimentClass}`}>
+            {outcome.sentiment}
+            {outcome.confidence ? ` · ${outcome.confidence} confidence` : ""}
+          </p>
+          <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-ink">
+            {outcome.outcome_summary ?? outcome.notice ?? "No outcome summary available."}
+          </p>
+          {outcome.citations.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {outcome.citations.map((c, i) => (
+                <a
+                  key={i}
+                  href={c.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-sans text-[11px] text-ink-muted underline hover:text-ink"
+                >
+                  {c.title || c.url}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TRACE_ICON_BY_KIND: Record<TraceStep["kind"], React.ReactNode> = {
   tool: <Wrench className="w-3.5 h-3.5" />,
@@ -60,6 +337,10 @@ const TAB_LABEL: Record<Tab, string> = {
 
 function normalizeLine(line: string | { phrase: string; meaning?: string }) {
   return typeof line === "string" ? { phrase: line, meaning: undefined } : line;
+}
+
+function normalizeFanQuestion(q: string | { question: string; suggested_response?: string }) {
+  return typeof q === "string" ? { question: q, suggested_response: undefined } : q;
 }
 
 export function CityDetail() {
@@ -121,7 +402,15 @@ export function CityDetail() {
 }
 
 function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: string }) {
-  const { cultureNotes, demographicSnapshot } = data;
+  const { cultureNotes, demographicSnapshot, campaign, stop, brief } = data;
+  let venueNotes: VenueNotes | null = null;
+  if (brief?.venue_notes_json) {
+    try {
+      venueNotes = JSON.parse(brief.venue_notes_json);
+    } catch {
+      venueNotes = null;
+    }
+  }
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <div className="rounded-2xl bg-paper p-6">
@@ -158,6 +447,32 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
         </p>
       </div>
       {demographicSnapshot && <KeyMetricsCard snapshot={demographicSnapshot} accent={accent} />}
+      {venueNotes && <VenueNotesCard notes={venueNotes} accent={accent} />}
+      <div className="lg:col-span-2">
+        <CulturalDriftCheck campaignId={campaign.campaign_id} cityId={stop.city_id} cityName={stop.city_name} accent={accent} />
+      </div>
+      <div className="lg:col-span-2">
+        <CulturalDriftCheck
+          campaignId={campaign.campaign_id}
+          cityId={stop.city_id}
+          cityName={stop.city_name}
+          accent={accent}
+          monitorType="safety"
+          label="Safety & Logistics Check"
+          icon={ShieldAlert}
+          noDriftMessage={`Checked just now — no notable safety or logistics concerns found for ${stop.city_name}.`}
+        />
+      </div>
+      <div className="lg:col-span-2">
+        <StopOutcomeCheck
+          campaignId={campaign.campaign_id}
+          cityId={stop.city_id}
+          cityName={stop.city_name}
+          campaignTitle={campaign.title}
+          stopDate={stop.stop_date}
+          accent={accent}
+        />
+      </div>
     </div>
   );
 }
@@ -239,19 +554,70 @@ function KeyMetricsCard({ snapshot, accent }: { snapshot: NonNullable<CityDetail
   );
 }
 
+function VenueNotesCard({ notes, accent }: { notes: VenueNotes; accent: string }) {
+  return (
+    <div className="rounded-2xl bg-paper p-6 lg:col-span-2">
+      <div className="flex items-center justify-between">
+        <SectionLabel icon={Building2} accent={accent} label="Venue Notes" />
+        <span className="font-sans text-[10px] uppercase tracking-[0.08em] text-ink-muted">
+          extracted from venue URL · confidence: {notes.confidence}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+        {notes.capacity && (
+          <div>
+            <p className="font-sans text-[11px] text-ink-muted">Capacity</p>
+            <p className="font-sans text-[15px] font-semibold text-ink">{notes.capacity}</p>
+          </div>
+        )}
+        {notes.typical_event_format && (
+          <div>
+            <p className="font-sans text-[11px] text-ink-muted">Typical format</p>
+            <p className="font-sans text-[15px] font-semibold text-ink">{notes.typical_event_format}</p>
+          </div>
+        )}
+      </div>
+      {notes.logistics_notes && (
+        <p className="mt-3 font-sans text-[13px] leading-relaxed text-ink-muted">{notes.logistics_notes}</p>
+      )}
+      {notes.citations.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {notes.citations.map((c, i) => (
+            <a
+              key={i}
+              href={c.url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-sans text-[11px] text-ink-muted underline hover:text-ink"
+            >
+              {c.title || c.url}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) {
-  const { localDelight, brief } = data;
+  const { localDelight, pronunciationAudio, brief } = data;
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
       <CueCard className="lg:col-span-3" accent={accent} meta={`${data.campaign.title} · Delight Card`}>
         <SectionLabel icon={Sparkles} accent={accent} label="Local Language Moment" />
         <div className="mt-3 space-y-3">
-          {localDelight.local_phrases.map((p, i) => (
-            <div key={i} className="flex items-baseline justify-between gap-3 border-b border-line pb-2 last:border-0">
-              <span className="font-display text-[16px] text-ink">{p.phrase}</span>
-              <span className="text-right font-sans text-[12px] italic text-ink-muted">{p.meaning}</span>
-            </div>
-          ))}
+          {localDelight.local_phrases.map((p, i) => {
+            const audioUrl = pronunciationAudio?.find((a) => a.phrase === p.phrase)?.audio_url;
+            return (
+              <div key={i} className="flex items-center justify-between gap-3 border-b border-line pb-2 last:border-0">
+                <div className="flex items-center gap-2">
+                  {audioUrl && <AudioPlayButton src={audioUrl} accent={accent} />}
+                  <span className="font-display text-[16px] text-ink">{p.phrase}</span>
+                </div>
+                <span className="text-right font-sans text-[12px] italic text-ink-muted">{p.meaning}</span>
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-6">
@@ -270,6 +636,15 @@ function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) 
       </CueCard>
 
       <div className="lg:col-span-2 space-y-5">
+        {brief?.style_moodboard_url && (
+          <div className="overflow-hidden rounded-2xl bg-paper">
+            <img
+              src={brief.style_moodboard_url}
+              alt={`Abstract style moodboard for ${data.stop.city_name}, grounded in local cultural motifs`}
+              className="aspect-square w-full object-cover"
+            />
+          </div>
+        )}
         <div className="rounded-2xl bg-paper p-6">
           <SectionLabel icon={Users} accent={accent} label="Crowd Moments" />
           <ul className="mt-2 space-y-2">
@@ -336,12 +711,22 @@ function BriefTab({ brief, accent, cardUrl }: { brief: TalentBrief | null; accen
           })}
         </ul>
       </div>
-      <div className="rounded-2xl bg-paper p-6">
-        <SectionLabel icon={MessageCircleQuestion} accent={accent} label="Likely Fan Questions" />
-        <ul className="mt-2 space-y-2">
-          {brief.high_probability_fan_questions.map((q, i) => (
-            <li key={i} className="font-sans text-[13px] text-ink">{q}</li>
-          ))}
+      <div className="rounded-2xl bg-paper p-6 lg:col-span-2">
+        <SectionLabel icon={MessageCircleQuestion} accent={accent} label="Likely Fan Questions & Talking Points" />
+        <ul className="mt-2 space-y-3">
+          {brief.high_probability_fan_questions.map((q, i) => {
+            const n = normalizeFanQuestion(q);
+            return (
+              <li key={i} className="border-t border-line pt-3 first:border-0 first:pt-0">
+                <p className="font-sans text-[13px] font-medium text-ink">{n.question}</p>
+                {n.suggested_response && (
+                  <p className="mt-1 font-sans text-[12.5px] leading-relaxed text-ink-muted">
+                    {n.suggested_response}
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
       {cardUrl && (

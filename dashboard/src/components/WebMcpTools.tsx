@@ -1,9 +1,8 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { createCampaign, generateBriefs, getCampaignOverview, getCityDetail, listCampaigns } from "../lib/api";
+import { createCampaign, generateBriefs, getCampaignOverview, getCityDetail, listCampaigns, listCities } from "../lib/api";
 import { useCampaignContext } from "../lib/campaignContext";
 
-const SUPPORTED_CITY_IDS = ["mumbai", "london", "tokyo", "sao_paulo", "new_york"];
 const CAMPAIGN_TYPES = ["film_promo_tour", "music_world_tour"];
 
 interface WebMcpToolResult {
@@ -68,6 +67,24 @@ export function WebMcpTools() {
       return { content: [{ type: "text", text: JSON.stringify(value) }] };
     }
 
+    // Real city list, not a hardcoded five -- a city added via the Add
+    // Cities screen (real Parallel Task API research) must be selectable
+    // here too, not just in the New Campaign form. Registration waits on
+    // this fetch since the enum is baked into the tool schema at
+    // registration time, not re-validated per call.
+    let supportedCityIds: string[] = [];
+    listCities()
+      .then((res) => {
+        supportedCityIds = res.cities.map((c) => c.city_id);
+      })
+      .catch(() => {
+        // Falls through to registering with an empty enum (any string
+        // accepted, just without the schema hint) rather than blocking
+        // every other tool on one failed fetch.
+      })
+      .finally(() => registerAll());
+
+    function registerAll() {
     register({
       name: "list_campaigns",
       description: "List every tour campaign in Tour Intelligence, with title, genre, campaign type, and status.",
@@ -100,7 +117,7 @@ export function WebMcpTools() {
         type: "object",
         properties: {
           campaign_id: { type: "string" },
-          city_id: { type: "string", enum: SUPPORTED_CITY_IDS },
+          city_id: { type: "string", enum: supportedCityIds },
         },
         required: ["campaign_id", "city_id"],
       },
@@ -113,8 +130,8 @@ export function WebMcpTools() {
     register({
       name: "create_campaign",
       description:
-        "Create a new tour campaign with its city stops. Stops are limited to the five cities with full " +
-        "culture, fan, and delight coverage: mumbai, london, tokyo, sao_paulo, new_york.",
+        "Create a new tour campaign with its city stops. Stops must be an existing city_id -- see " +
+        "get_city_detail's enum, or add a new one via the Add Cities screen first.",
       inputSchema: {
         type: "object",
         properties: {
@@ -127,7 +144,7 @@ export function WebMcpTools() {
             items: {
               type: "object",
               properties: {
-                city_id: { type: "string", enum: SUPPORTED_CITY_IDS },
+                city_id: { type: "string", enum: supportedCityIds },
                 stop_date: { type: "string", description: "YYYY-MM-DD" },
               },
               required: ["city_id", "stop_date"],
@@ -181,6 +198,7 @@ export function WebMcpTools() {
         return textResult(await generateBriefs(campaign_id));
       },
     });
+    }
 
     return () => controller.abort();
   }, [navigate, setActiveCampaignId, refresh]);

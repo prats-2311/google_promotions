@@ -2,13 +2,61 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Clock, MapPin, Sparkles, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, MapPin, Sparkles, Loader2, AlertTriangle, Info, Lightbulb } from "lucide-react";
 import { getCampaignOverview, generateBriefs, GenerationAlreadyInFlightError } from "../lib/api";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
 import { CueCard } from "../components/ui/CueCard";
 import { useCampaignContext } from "../lib/campaignContext";
 import { DashboardSkeleton } from "../components/ui/Skeletons";
+import type { CampaignInsight } from "../lib/types";
+
+const SEVERITY_STYLE: Record<CampaignInsight["severity"], { icon: typeof AlertTriangle; className: string }> = {
+  risk: { icon: AlertTriangle, className: "text-rose-700 bg-rose-950/10" },
+  advisory: { icon: Lightbulb, className: "text-amber-700 bg-amber-950/10" },
+  info: { icon: Info, className: "text-ink-muted bg-black/5" },
+};
+
+// The "insight that wasn't possible before": a synthesis pass over every
+// stop's real, already-finalized brief, looking for patterns a planner
+// going city-by-city would miss -- a theme with different valence at two
+// stops, a real tension between two cities' guidance. Only rendered once
+// there's at least one real finding; no forced "nothing to report" state.
+function CampaignInsightsPanel({ insights }: { insights: CampaignInsight[] }) {
+  if (insights.length === 0) return null;
+  return (
+    <div className="mt-8">
+      <p className="mb-3 font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">
+        Cross-City Insights
+      </p>
+      <div className="space-y-3">
+        {insights.map((insight, i) => {
+          const { icon: Icon, className } = SEVERITY_STYLE[insight.severity];
+          return (
+            <div key={i} className="rounded-2xl bg-paper p-5">
+              <div className="flex items-start gap-3">
+                <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full ${className}`}>
+                  <Icon size={13} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-display text-[16px] text-ink">{insight.title}</p>
+                  <p className="mt-1 font-sans text-[13px] leading-relaxed text-ink-muted">{insight.summary}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {insight.affected_cities.map((c) => (
+                      <span key={c} className="rounded-full bg-black/5 px-2 py-0.5 font-sans text-[10.5px] text-ink-muted">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // Polling interval while generation is in flight -- the agent pipeline takes
 // real wall-clock minutes per city (multiple LLM turns against Dialogflow
@@ -135,6 +183,8 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      <CampaignInsightsPanel insights={data.campaignInsights} />
     </motion.div>
   );
 }

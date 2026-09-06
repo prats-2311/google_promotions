@@ -1,0 +1,150 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Check, Globe2, Loader2, Sparkles } from "lucide-react";
+import { bulkAddCities, listCities } from "../lib/api";
+import type { BulkAddCitiesResponse } from "../lib/types";
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
+        {label}
+      </span>
+      {hint && <span className="mb-1.5 block font-sans text-[12px] text-ink-muted">{hint}</span>}
+      {children}
+    </label>
+  );
+}
+
+export function AddCities() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["cities"], queryFn: listCities });
+  const [input, setInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<BulkAddCitiesResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const cityNames = input
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (cityNames.length === 0 || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await bulkAddCities(cityNames);
+      setResult(res);
+      setInput("");
+      await queryClient.invalidateQueries({ queryKey: ["cities"] });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <Link to="/" className="mb-6 flex items-center gap-1.5 font-sans text-[13px] text-canvas-muted hover:text-canvas-text">
+        <ArrowLeft size={14} /> Back to campaign
+      </Link>
+
+      <header className="mb-8">
+        <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Expand Coverage</p>
+        <h1 className="mt-1 font-display text-[30px] text-canvas-text">Add Cities</h1>
+        <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
+          Real Parallel Task API research per city — region, country, primary language, and timezone, not a bare
+          placeholder row. New cities become selectable in New Campaign as soon as research finishes.
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit} className="rounded-2xl bg-paper p-6">
+        <Field label="City names" hint="One per line, or comma-separated.">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={"Seoul\nBerlin\nLagos"}
+            rows={4}
+            className="w-full resize-none rounded-lg border border-line bg-paper-raised px-3 py-2 font-sans text-[13px] text-ink outline-none focus:border-ink/30"
+          />
+        </Field>
+
+        {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't add cities: {error}</p>}
+
+        <button
+          type="submit"
+          disabled={cityNames.length === 0 || submitting}
+          className="mt-4 flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-paper transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {submitting
+            ? `Researching ${cityNames.length} ${cityNames.length === 1 ? "city" : "cities"}…`
+            : `Research & Add ${cityNames.length > 0 ? cityNames.length : ""} ${cityNames.length === 1 ? "City" : "Cities"}`}
+        </button>
+
+        {result && (
+          <div className="mt-5 space-y-3 border-t border-line pt-4">
+            {result.added.length > 0 && (
+              <div>
+                <p className="mb-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                  Added
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {result.added.map((id) => (
+                    <span
+                      key={id}
+                      className="flex items-center gap-1 rounded-full border border-emerald-700/30 bg-emerald-700/10 px-2.5 py-1 font-sans text-[11px] text-emerald-800"
+                    >
+                      <Check size={11} /> {id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {result.skipped_existing.length > 0 && (
+              <div>
+                <p className="mb-1.5 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                  Already existed
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {result.skipped_existing.map((id) => (
+                    <span
+                      key={id}
+                      className="rounded-full border border-line bg-paper-raised px-2.5 py-1 font-sans text-[11px] text-ink-muted"
+                    >
+                      {id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </form>
+
+      <div className="mt-6 rounded-2xl bg-paper p-6">
+        <div className="mb-3 flex items-center gap-2">
+          <Globe2 size={14} className="text-ink-muted" />
+          <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
+            All Cities ({data?.cities.length ?? (isLoading ? "…" : 0)})
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {data?.cities.map((city) => (
+            <div key={city.city_id} className="flex items-baseline justify-between gap-2 border-b border-line py-1.5">
+              <span className="font-sans text-[13px] text-ink">{city.city_name}</span>
+              <span className="truncate font-sans text-[11px] text-ink-muted">
+                {[city.country, city.region].filter(Boolean).join(" · ")}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

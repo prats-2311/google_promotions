@@ -21,10 +21,11 @@ _SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _SERVICE_DIR)
 os.environ.setdefault("PARALLEL_API_KEY", "test-fake-key")
 os.environ.setdefault("GCP_PROJECT", "test-project")
+os.environ.setdefault("DELIGHT_CARD_BUCKET", "test-bucket")
 
 import pytest
 
-with patch("google.cloud.bigquery.Client"), patch("parallel.Parallel"):
+with patch("google.cloud.bigquery.Client"), patch("parallel.Parallel"), patch("google.cloud.storage.Client"):
     _spec = importlib.util.spec_from_file_location("tour_data_api_main", os.path.join(_SERVICE_DIR, "main.py"))
     main = importlib.util.module_from_spec(_spec)
     sys.modules["tour_data_api_main"] = main
@@ -55,3 +56,10 @@ def mock_parallel_client(monkeypatch):
 @pytest.fixture(autouse=True)
 def mock_access_token(monkeypatch):
     monkeypatch.setattr(main, "_get_access_token", lambda: "fake-access-token")
+
+
+@pytest.fixture
+def mock_storage_client(monkeypatch):
+    mock_client = MagicMock()
+    monkeypatch.setattr(main, "_storage_client", mock_client)
+    return mock_client

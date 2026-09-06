@@ -368,6 +368,105 @@ paths:
         "500":
           description: Parallel Search or Gemini synthesis call failed.
 
+  /extract_venue_info:
+    post:
+      operationId: extractVenueInfo
+      summary: >
+        Stop-specific logistics via Parallel's Extract API, pointed at a
+        specific venue/promoter URL the campaign creator provides -- distinct
+        from getCultureNotes, which is city-level and never this granular.
+        Extract pulls structured content from the given URL(s) directly
+        rather than running a fresh web search, so this is only as good as
+        the URL supplied. Called directly from the orchestration driver, not
+        through a conversational playbook turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [urls]
+              properties:
+                urls: { type: array, items: { type: string } }
+                objective: { type: string }
+      responses:
+        "200":
+          description: Grounded venue notes (possibly low-confidence if extraction turned up little).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  capacity: { type: string, nullable: true }
+                  typical_event_format: { type: string, nullable: true }
+                  logistics_notes: { type: string, nullable: true }
+                  confidence: { type: string, enum: [high, medium, low] }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+
+  /cities_list:
+    get:
+      operationId: getCitiesList
+      summary: >
+        The full data-driven cities table (seeded + any bulk-added via
+        /bulk_add_cities) -- the live replacement for the old hardcoded
+        supported-city list, so a bulk-added city is immediately selectable
+        everywhere city_id is validated.
+      responses:
+        "200":
+          description: Every known city.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cities:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        city_id: { type: string }
+                        city_name: { type: string }
+                        country: { type: string, nullable: true }
+                        primary_language: { type: string, nullable: true }
+                        timezone: { type: string, nullable: true }
+                        region: { type: string, nullable: true }
+
+  /bulk_add_cities:
+    post:
+      operationId: bulkAddCities
+      summary: >
+        Real Parallel Task API batch research for many new cities at once,
+        instead of N sequential live-search calls -- each city becomes a
+        real cities table row with real, schema-constrained researched
+        facts (region, country, primary_language, timezone), not a bare
+        placeholder. Cities already present are skipped, not re-researched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_names]
+              properties:
+                city_names: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Which cities were added vs. already existed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  added: { type: array, items: { type: string } }
+                  skipped_existing: { type: array, items: { type: string } }
+
   /campaigns:
     get:
       operationId: getCampaign
@@ -653,5 +752,388 @@ paths:
                   grounding_check_notes: { type: string }
                   flags:
                     type: array
+                    items: {}
+
+  /synthesize_pronunciation:
+    post:
+      operationId: synthesizePronunciation
+      summary: >
+        Real Gemini-native-TTS pronunciation audio for a set of local
+        phrases, uploaded to Cloud Storage. Content-hashed per phrase, so a
+        repeat (a common greeting reused across cities/campaigns) resolves
+        to the existing object instead of a redundant TTS call. Called
+        directly from the orchestration driver after local_delight is
+        gathered, not through a conversational playbook turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phrases]
+              properties:
+                phrases: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: One entry per requested phrase, in the same order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  audio:
+                    type: array
                     items:
                       type: object
+                      properties:
+                        phrase: { type: string }
+                        audio_url: { type: string, nullable: true }
+                        error: { type: string, nullable: true }
+
+  /generate_style_moodboard:
+    post:
+      operationId: generateStyleMoodboard
+      summary: >
+        Grounded local-style image generation: a real Gemini image-gen call
+        producing an abstract style moodboard poster, prompted from real
+        culture/local-delight signals for this city (palette, motifs, mood)
+        -- never a generic stock aesthetic, and explicitly forbidden from
+        depicting real people or readable text. Uploaded to Cloud Storage,
+        content-hashed on (city_id, style_notes) so an unchanged style brief
+        skips re-generation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_id, city_name, style_notes]
+              properties:
+                city_id: { type: string }
+                city_name: { type: string }
+                style_notes: { type: string }
+      responses:
+        "200":
+          description: The generated (or cached) moodboard image URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  city_id: { type: string }
+                  moodboard_url: { type: string }
+
+  /city_monitors:
+    post:
+      operationId: createCityMonitor
+      summary: >
+        Continuous grounding: creates (or returns the existing) real
+        Parallel Monitor tracking cultural/news drift (or, with
+        monitor_type=safety, safety/logistics drift) for one city stop --
+        so a brief generated weeks before a tour date can be checked for
+        what's changed since, which a one-shot generation can't do.
+        Idempotent per campaign_id+city_id+monitor_type.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, city_id, city_name]
+              properties:
+                campaign_id: { type: string }
+                city_id: { type: string }
+                city_name: { type: string }
+                monitor_type: { type: string, enum: [cultural, safety], default: cultural }
+      responses:
+        "200":
+          description: The monitor id, and whether it was just created or already existed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  monitor_id: { type: string }
+                  created: { type: boolean }
+
+  /trigger_city_monitor:
+    post:
+      operationId: triggerCityMonitor
+      summary: >
+        Forces an immediate check instead of waiting for the monitor's own
+        daily cadence. Real observed latency: ~60-90s until a fresh result
+        appears via getCityMonitorEvents.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [monitor_id]
+              properties:
+                monitor_id: { type: string }
+      responses:
+        "200":
+          description: Trigger accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+  /city_monitor_events:
+    get:
+      operationId: getCityMonitorEvents
+      summary: Whatever drift Parallel has found for this monitor so far, most recent first.
+      parameters:
+        - name: monitor_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Real, cited findings (possibly empty if nothing has resolved yet).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        event_date: { type: string, nullable: true }
+                        summary: { type: string, nullable: true }
+                        citations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              url: { type: string }
+                              title: { type: string }
+
+  /genre_recommendations:
+    get:
+      operationId: getGenreRecommendations
+      summary: >
+        Cross-campaign learning: which cities have historically driven the
+        highest real enthusiasm for a genre, aggregated from actual
+        finalized city_briefs joined to their campaign's genre. Naturally
+        sparse until more campaigns have run.
+      parameters:
+        - name: genre
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ranked recommendations, possibly empty if no historical data exists yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  genre: { type: string }
+                  recommendations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        city_id: { type: string }
+                        avg_enthusiasm_score: { type: number }
+                        sample_size: { type: integer }
+
+  /synthesize_campaign_insights:
+    post:
+      operationId: synthesizeCampaignInsights
+      summary: >
+        Cross-city pattern synthesis: given every stop's already-finalized
+        brief data, finds non-obvious patterns a planner going city-by-city
+        would miss -- a shared theme with different valence across stops, a
+        sequencing risk, a real tension between two cities' guidance.
+        Strictly grounded in the cities payload, never speculative beyond
+        it. Called once from the orchestration driver after every stop in a
+        campaign has a final brief -- does not write to BigQuery itself,
+        see /campaign_insights for that.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, cities]
+              properties:
+                campaign_id: { type: string }
+                cities:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      city_id: { type: string }
+                      city_name: { type: string }
+                      culture_summary: { type: string, nullable: true }
+                      local_delight_summary: { type: string, nullable: true }
+                      talent_brief_json: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Cross-city insights found (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  insights:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        summary: { type: string }
+                        severity: { type: string, enum: [info, advisory, risk] }
+                        affected_cities: { type: array, items: { type: string } }
+
+  /campaign_insights:
+    get:
+      operationId: getCampaignInsights
+      summary: The latest cross-city insights synthesis for a campaign, if one has been run.
+      parameters:
+        - name: campaign_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest insights row, or nulls if none generated yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  generated_at: { type: string, nullable: true }
+                  insights_json: { type: string, nullable: true }
+    post:
+      operationId: insertCampaignInsights
+      summary: Persists one cross-city insights synthesis result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id]
+              properties:
+                campaign_id: { type: string }
+                generated_at: { type: string, nullable: true }
+                insights_json: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Insert confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  status: { type: string }
+
+  /synthesize_stop_outcome:
+    post:
+      operationId: synthesizeStopOutcome
+      summary: >
+        Post-tour retrospective: a real live search for actual press/fan
+        reaction after a stop's date has passed -- distinct from
+        city_briefs.enthusiasm_score, which is only ever a pre-show
+        prediction. Does not write to BigQuery itself; see
+        /stop_outcomes for that.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, city_id, city_name, campaign_title, stop_date]
+              properties:
+                campaign_id: { type: string }
+                city_id: { type: string }
+                city_name: { type: string }
+                campaign_title: { type: string }
+                stop_date: { type: string }
+      responses:
+        "200":
+          description: Grounded outcome (possibly low-confidence if no results found).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  outcome_summary: { type: string, nullable: true }
+                  sentiment: { type: string, enum: [positive, mixed, negative, unknown] }
+                  confidence: { type: string, enum: [high, medium, low] }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string }
+
+  /stop_outcomes:
+    get:
+      operationId: getStopOutcome
+      summary: The latest persisted post-tour outcome for one campaign/city stop, if one has been synthesized.
+      parameters:
+        - name: campaign_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: city_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest outcome row, or a null outcome_json if none generated yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  city_id: { type: string }
+                  generated_at: { type: string, nullable: true }
+                  outcome_json: { type: string, nullable: true }
+    post:
+      operationId: insertStopOutcome
+      summary: Persists one post-tour outcome synthesis result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, city_id]
+              properties:
+                campaign_id: { type: string }
+                city_id: { type: string }
+                generated_at: { type: string, nullable: true }
+                outcome_json: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Insert confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  city_id: { type: string }
+                  status: { type: string }

@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.campaign_stops` (
   city_id STRING NOT NULL,
   stop_date DATE,
   sequence_order INT64,
-  event_format STRING
+  event_format STRING,
+  venue_url STRING
 );
 
 -- Written live by the Campaign Orchestrator (the "agents act" proof point):
@@ -110,7 +111,50 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.city_briefs` (
   grounding_check_passed BOOL,
   grounding_check_notes STRING,
   delight_card_url STRING,
-  demographic_snapshot_json STRING
+  demographic_snapshot_json STRING,
+  pronunciation_audio_json STRING,
+  venue_notes_json STRING,
+  style_moodboard_url STRING
+);
+
+-- A Parallel Monitor is created on demand (not at brief-finalization time),
+-- well after the city_briefs row is written -- and city_briefs rows sit in
+-- BigQuery's streaming-insert buffer for up to ~90 minutes during which
+-- UPDATE fails outright. A separate insert-once table sidesteps that
+-- entirely rather than trying to retrofit an UPDATE onto city_briefs. One
+-- row per campaign+city (idempotent creation checks this table first before
+-- calling Parallel again).
+-- monitor_type distinguishes cultural drift ('cultural') from safety/
+-- logistics drift ('safety') -- two independent Parallel Monitors per city,
+-- different query focus, same underlying infrastructure. Existing rows
+-- predate this column and are all 'cultural' (backfilled below).
+CREATE TABLE IF NOT EXISTS `tour_intelligence.city_monitors` (
+  campaign_id STRING NOT NULL,
+  city_id STRING NOT NULL,
+  monitor_type STRING,
+  monitor_id STRING NOT NULL,
+  created_at TIMESTAMP
+);
+
+-- One row per finalized stop once its date has passed and a retrospective
+-- has been run -- the real, actual outcome (press/fan reaction), distinct
+-- from the pre-show *predicted* enthusiasm_score on city_briefs. Closes the
+-- loop cross-campaign learning would otherwise only ever guess at.
+CREATE TABLE IF NOT EXISTS `tour_intelligence.stop_outcomes` (
+  campaign_id STRING NOT NULL,
+  city_id STRING NOT NULL,
+  generated_at TIMESTAMP,
+  outcome_json STRING
+);
+
+-- One row per campaign-insights synthesis run (a rerun after new stops finish
+-- produces another row; consumers take the latest by generated_at, same
+-- pattern as city_briefs). Written once at the end of a full campaign run,
+-- after every stop's real city_briefs row already exists.
+CREATE TABLE IF NOT EXISTS `tour_intelligence.campaign_insights` (
+  campaign_id STRING NOT NULL,
+  generated_at TIMESTAMP,
+  insights_json STRING
 );
 
 -- CREATE TABLE IF NOT EXISTS is a no-op against tables that already exist
@@ -121,3 +165,18 @@ ALTER TABLE `tour_intelligence.campaigns`
 
 ALTER TABLE `tour_intelligence.city_briefs`
   ADD COLUMN IF NOT EXISTS demographic_snapshot_json STRING;
+
+ALTER TABLE `tour_intelligence.city_briefs`
+  ADD COLUMN IF NOT EXISTS pronunciation_audio_json STRING;
+
+ALTER TABLE `tour_intelligence.city_briefs`
+  ADD COLUMN IF NOT EXISTS venue_notes_json STRING;
+
+ALTER TABLE `tour_intelligence.city_briefs`
+  ADD COLUMN IF NOT EXISTS style_moodboard_url STRING;
+
+ALTER TABLE `tour_intelligence.campaign_stops`
+  ADD COLUMN IF NOT EXISTS venue_url STRING;
+
+ALTER TABLE `tour_intelligence.city_monitors`
+  ADD COLUMN IF NOT EXISTS monitor_type STRING;

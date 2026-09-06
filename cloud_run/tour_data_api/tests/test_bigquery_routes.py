@@ -231,7 +231,7 @@ def test_campaign_stops_requires_campaign_id(client):
 def test_campaign_stops_formats_stop_date_as_iso(client, mock_bq):
     _mock_query_result(mock_bq, [{
         "city_id": "mumbai", "city_name": "Mumbai", "stop_date": datetime.date(2026, 9, 1),
-        "sequence_order": 1, "event_format": "arena",
+        "sequence_order": 1, "event_format": "arena", "venue_url": None,
     }])
     res = client.get("/campaign_stops?campaign_id=nova_horizon_2026")
     stop = res.get_json()["stops"][0]
@@ -241,7 +241,7 @@ def test_campaign_stops_formats_stop_date_as_iso(client, mock_bq):
 def test_campaign_stops_handles_null_stop_date(client, mock_bq):
     _mock_query_result(mock_bq, [{
         "city_id": "mumbai", "city_name": "Mumbai", "stop_date": None,
-        "sequence_order": 1, "event_format": None,
+        "sequence_order": 1, "event_format": None, "venue_url": None,
     }])
     res = client.get("/campaign_stops?campaign_id=nova_horizon_2026")
     assert res.get_json()["stops"][0]["stop_date"] is None
@@ -256,7 +256,12 @@ def test_campaign_stops_post_requires_campaign_id_and_stops(client):
     assert res.status_code == 400
 
 
-def test_campaign_stops_post_rejects_unsupported_city(client):
+def _mock_known_city_ids(mock_bq, city_ids):
+    _mock_query_result(mock_bq, [{"city_id": cid} for cid in city_ids])
+
+
+def test_campaign_stops_post_rejects_unsupported_city(client, mock_bq):
+    _mock_known_city_ids(mock_bq, ["mumbai", "london"])
     res = client.post("/campaign_stops", json={
         "campaign_id": "c1",
         "stops": [{"city_id": "atlantis", "stop_date": "2026-09-01", "sequence_order": 1}],
@@ -266,6 +271,7 @@ def test_campaign_stops_post_rejects_unsupported_city(client):
 
 
 def test_campaign_stops_post_inserts_rows(client, mock_bq):
+    _mock_known_city_ids(mock_bq, ["mumbai", "london"])
     mock_bq.insert_rows_json.return_value = []
     res = client.post("/campaign_stops", json={
         "campaign_id": "c1",
@@ -284,6 +290,7 @@ def test_campaign_stops_post_inserts_rows(client, mock_bq):
 
 
 def test_campaign_stops_post_surfaces_insert_errors_as_500(client, mock_bq):
+    _mock_known_city_ids(mock_bq, ["mumbai"])
     mock_bq.insert_rows_json.return_value = [{"index": 0, "errors": [{"reason": "invalid"}]}]
     res = client.post("/campaign_stops", json={
         "campaign_id": "c1",
@@ -307,11 +314,17 @@ def test_city_briefs_get_formats_generated_at_as_iso(client, mock_bq):
         "talent_brief_json": "{}", "grounding_check_passed": True,
         "grounding_check_notes": "ok", "delight_card_url": "https://x",
         "demographic_snapshot_json": '{"literacy_rate": 89.2}',
+        "pronunciation_audio_json": '[{"phrase": "Namaste!", "audio_url": "https://x/a.wav"}]',
+        "style_moodboard_url": "https://storage.googleapis.com/bucket/style-moodboards/abc.png",
+        "venue_notes_json": '{"capacity": "12,000", "confidence": "medium"}',
     }])
     res = client.get("/city_briefs?campaign_id=c1")
     brief = res.get_json()["briefs"][0]
     assert brief["generated_at"] == "2026-07-28T12:00:00"
     assert brief["demographic_snapshot_json"] == '{"literacy_rate": 89.2}'
+    assert brief["pronunciation_audio_json"] == '[{"phrase": "Namaste!", "audio_url": "https://x/a.wav"}]'
+    assert brief["style_moodboard_url"] == "https://storage.googleapis.com/bucket/style-moodboards/abc.png"
+    assert brief["venue_notes_json"] == '{"capacity": "12,000", "confidence": "medium"}'
 
 
 def test_city_briefs_get_optional_city_id_adds_filter(client, mock_bq):
@@ -348,6 +361,39 @@ def test_city_briefs_post_stores_demographic_snapshot(client, mock_bq):
     assert res.status_code == 200
     inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
     assert inserted_row["demographic_snapshot_json"] == '{"literacy_rate": 89.2}'
+
+
+def test_city_briefs_post_stores_pronunciation_audio(client, mock_bq):
+    mock_bq.insert_rows_json.return_value = []
+    res = client.post("/city_briefs", json={
+        "brief_id": "b1", "campaign_id": "c1", "city_id": "mumbai", "status": "final",
+        "pronunciation_audio_json": '[{"phrase": "Namaste!", "audio_url": "https://x/a.wav"}]',
+    })
+    assert res.status_code == 200
+    inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
+    assert inserted_row["pronunciation_audio_json"] == '[{"phrase": "Namaste!", "audio_url": "https://x/a.wav"}]'
+
+
+def test_city_briefs_post_stores_style_moodboard_url(client, mock_bq):
+    mock_bq.insert_rows_json.return_value = []
+    res = client.post("/city_briefs", json={
+        "brief_id": "b1", "campaign_id": "c1", "city_id": "mumbai", "status": "final",
+        "style_moodboard_url": "https://storage.googleapis.com/bucket/style-moodboards/abc.png",
+    })
+    assert res.status_code == 200
+    inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
+    assert inserted_row["style_moodboard_url"] == "https://storage.googleapis.com/bucket/style-moodboards/abc.png"
+
+
+def test_city_briefs_post_stores_venue_notes(client, mock_bq):
+    mock_bq.insert_rows_json.return_value = []
+    res = client.post("/city_briefs", json={
+        "brief_id": "b1", "campaign_id": "c1", "city_id": "mumbai", "status": "final",
+        "venue_notes_json": '{"capacity": "12,000", "confidence": "medium"}',
+    })
+    assert res.status_code == 200
+    inserted_row = mock_bq.insert_rows_json.call_args[0][1][0]
+    assert inserted_row["venue_notes_json"] == '{"capacity": "12,000", "confidence": "medium"}'
 
 
 def test_city_briefs_post_surfaces_insert_errors_as_500(client, mock_bq):

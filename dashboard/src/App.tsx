@@ -3,7 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { Dashboard } from "./pages/Dashboard";
 import { CampaignProvider } from "./lib/campaignContext";
-import { CityDetailSkeleton, CompareCitiesSkeleton, NewCampaignSkeleton } from "./components/ui/Skeletons";
+import { CityDetailSkeleton, CompareCitiesSkeleton, NewCampaignSkeleton, AddCitiesSkeleton } from "./components/ui/Skeletons";
 import { WebMcpTools } from "./components/WebMcpTools";
 
 // Dashboard is the landing route, loaded eagerly -- it's needed on first
@@ -14,6 +14,7 @@ import { WebMcpTools } from "./components/WebMcpTools";
 const CityDetail = lazy(() => import("./pages/CityDetail").then((m) => ({ default: m.CityDetail })));
 const CompareCities = lazy(() => import("./pages/CompareCities").then((m) => ({ default: m.CompareCities })));
 const NewCampaign = lazy(() => import("./pages/NewCampaign").then((m) => ({ default: m.NewCampaign })));
+const AddCities = lazy(() => import("./pages/AddCities").then((m) => ({ default: m.AddCities })));
 
 export default function App() {
   return (
@@ -48,6 +49,14 @@ export default function App() {
             element={
               <Suspense fallback={<NewCampaignSkeleton />}>
                 <NewCampaign />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/cities/add"
+            element={
+              <Suspense fallback={<AddCitiesSkeleton />}>
+                <AddCities />
               </Suspense>
             }
           />

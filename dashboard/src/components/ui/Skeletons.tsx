@@ -39,6 +39,21 @@ export function CompareCitiesSkeleton() {
   );
 }
 
+export function AddCitiesSkeleton() {
+  return (
+    <div className="mx-auto max-w-2xl">
+      <Block className="mb-6 h-4 w-32" />
+      <header className="mb-8">
+        <Block className="h-3 w-28" />
+        <Block className="mt-2 h-9 w-48" />
+        <Block className="mt-2 h-4 w-96" />
+      </header>
+      <CardBlock className="mb-6 h-[220px]" />
+      <CardBlock className="h-[200px]" />
+    </div>
+  );
+}
+
 export function NewCampaignSkeleton() {
   return (
     <div className="mx-auto max-w-2xl">

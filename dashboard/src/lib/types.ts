@@ -24,9 +24,17 @@ export interface CityOverview extends CampaignStop {
   city_importance_tier: string | null;
 }
 
+export interface CampaignInsight {
+  title: string;
+  summary: string;
+  severity: "info" | "advisory" | "risk";
+  affected_cities: string[];
+}
+
 export interface CampaignOverview {
   campaign: Campaign;
   cities: CityOverview[];
+  campaignInsights: CampaignInsight[];
 }
 
 export interface CultureNotes {
@@ -77,7 +85,10 @@ export interface TalentBrief {
   topics_to_lean_into: string[];
   topics_to_avoid: string[];
   pronounceable_local_lines: (string | { phrase: string; meaning?: string })[];
-  high_probability_fan_questions: string[];
+  // Object form (question + suggested_response) is the current shape; plain
+  // strings are read for backward compatibility with briefs finalized
+  // before talking points were added.
+  high_probability_fan_questions: (string | { question: string; suggested_response?: string })[];
 }
 
 export interface CityBrief {
@@ -94,6 +105,9 @@ export interface CityBrief {
   grounding_check_notes: string | null;
   delight_card_url: string | null;
   demographic_snapshot_json: string | null;
+  pronunciation_audio_json: string | null;
+  style_moodboard_url: string | null;
+  venue_notes_json: string | null;
 }
 
 export interface DemographicSnapshot {
@@ -110,6 +124,66 @@ export interface DemographicSnapshot {
   notable_public_holidays: string[];
 }
 
+export interface MonitorCitation {
+  url: string;
+  title: string;
+}
+
+export interface MonitorEvent {
+  event_date: string | null;
+  summary: string | null;
+  citations: MonitorCitation[];
+}
+
+export interface StopOutcome {
+  source: "parallel_live";
+  citations: MonitorCitation[];
+  outcome_summary: string | null;
+  sentiment: "positive" | "mixed" | "negative" | "unknown";
+  confidence: "high" | "medium" | "low";
+  notice?: string;
+}
+
+export interface VenueNotes {
+  source: string;
+  citations: MonitorCitation[];
+  capacity: string | null;
+  typical_event_format: string | null;
+  logistics_notes: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface City {
+  city_id: string;
+  city_name: string;
+  country: string | null;
+  primary_language: string | null;
+  timezone: string | null;
+  region: string | null;
+}
+
+export interface BulkAddCitiesResponse {
+  added: string[];
+  skipped_existing: string[];
+}
+
+export interface GenreRecommendation {
+  city_id: string;
+  avg_enthusiasm_score: number;
+  sample_size: number;
+}
+
+export interface GenreRecommendationsResponse {
+  genre: string;
+  recommendations: GenreRecommendation[];
+}
+
+export interface PronunciationAudio {
+  phrase: string;
+  audio_url: string | null;
+  error?: string;
+}
+
 export interface CityDetail {
   campaign: Campaign;
   stop: CampaignStop;
@@ -118,6 +192,7 @@ export interface CityDetail {
   fanSignal: FanSignal | null;
   brief: CityBrief | null;
   demographicSnapshot: DemographicSnapshot | null;
+  pronunciationAudio: PronunciationAudio[] | null;
 }
 
 export interface TraceStep {
@@ -130,6 +205,7 @@ export interface NewCampaignStopInput {
   city_id: string;
   stop_date: string;
   event_format?: string | null;
+  venue_url?: string | null;
 }
 
 export interface NewCampaignInput {

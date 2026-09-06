@@ -148,10 +148,14 @@ def _brief_sections(talent_brief_json: str) -> dict:
         parsed = json.loads(talent_brief_json)
     except (json.JSONDecodeError, TypeError):
         return {"lean_into": [], "avoid": [], "fan_questions": []}
+    raw_questions = parsed.get("high_probability_fan_questions", parsed.get("fan_questions", []))
     return {
         "lean_into": parsed.get("topics_to_lean_into", parsed.get("lean_into", [])),
         "avoid": parsed.get("topics_to_avoid", parsed.get("avoid", [])),
-        "fan_questions": parsed.get("high_probability_fan_questions", parsed.get("fan_questions", [])),
+        # The delight card is a printable quick-reference, not where a full
+        # talking point belongs -- just the question text here. The dashboard
+        # reads talent_brief_json directly and shows suggested_response too.
+        "fan_questions": [q["question"] if isinstance(q, dict) else q for q in raw_questions],
     }
 
 
@@ -224,7 +228,10 @@ def _synthesize_draft_brief(city_name: str, collected: dict, revision_notes: str
         f"Draft a talent brief as a single JSON object with exactly these keys: "
         f"topics_to_lean_into (array of strings), topics_to_avoid (array of strings), "
         f"pronounceable_local_lines (array of the exact phrase strings from local_delight_payload's "
-        f"local_phrases), and high_probability_fan_questions (array of 3-5 strings). "
+        f"local_phrases), and high_probability_fan_questions (array of 3-5 objects, each with "
+        f"'question' — the likely fan/press question — and 'suggested_response' — a short, genuine "
+        f"talking point the talent could actually say, grounded only in the known data above, never "
+        f"inventing a fact or opinion the data doesn't support). "
         f"Respond with ONLY the JSON object, no other text.{revision}"
     )
     resp = _detect_intent(f"synth-{int(time.time() * 1000)}", prompt, _auth_token("access"))
@@ -233,6 +240,146 @@ def _synthesize_draft_brief(city_name: str, collected: dict, revision_notes: str
         if "text" in m:
             texts.extend(m["text"]["text"])
     return "\n".join(texts)
+
+
+def _synthesize_pronunciation_audio(phrases: list[str], identity_token: str) -> list[dict] | None:
+    """Real Gemini TTS audio per local phrase -- a nice-to-have on top of the
+    core brief, never allowed to block it. A failure here (TTS quota, a
+    transient 5xx) degrades gracefully: the brief still finalizes with its
+    text-only local_phrases, just without audio."""
+    if not phrases:
+        print("pronunciation audio: no phrases to synthesize, skipping")
+        return None
+    print(f"pronunciation audio: requesting {len(phrases)} phrase(s): {phrases}")
+    try:
+        resp = requests.post(
+            f"{TOUR_DATA_API}/synthesize_pronunciation",
+            headers={"Authorization": f"Bearer {identity_token}"},
+            json={"phrases": phrases},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        audio = resp.json()["audio"]
+        print(f"pronunciation audio: got {len(audio)} result(s)")
+        return audio
+    except Exception as e:
+        print(f"pronunciation audio synthesis failed, continuing without it: {type(e).__name__}: {e}")
+        return None
+
+
+def _style_notes_from_collected(collected: dict) -> str | None:
+    """Grounded style signal for the moodboard image prompt -- built only
+    from real gathered data (culture_notes' greeting style, local_delight's
+    cultural references and crowd moments), never a generic default. None
+    when nothing real is available to ground the prompt in."""
+    culture_notes = collected.get("culture_notes") or {}
+    local_delight = collected.get("local_delight") or {}
+    parts = []
+    if culture_notes.get("greeting_style"):
+        parts.append(culture_notes["greeting_style"])
+    if local_delight.get("cultural_references"):
+        parts.append(", ".join(local_delight["cultural_references"]))
+    if local_delight.get("crowd_moment_suggestions"):
+        parts.append(", ".join(local_delight["crowd_moment_suggestions"][:2]))
+    return "; ".join(parts) if parts else None
+
+
+def _generate_style_moodboard(city_id: str, city_name: str, style_notes: str, identity_token: str) -> str | None:
+    """Grounded local-style image generation -- a nice-to-have on top of the
+    core brief, never allowed to block it. A failure here degrades
+    gracefully: the brief still finalizes without a moodboard, same shape
+    as _synthesize_pronunciation_audio above."""
+    print(f"style moodboard: requesting for {city_name}")
+    try:
+        resp = requests.post(
+            f"{TOUR_DATA_API}/generate_style_moodboard",
+            headers={"Authorization": f"Bearer {identity_token}"},
+            json={"city_id": city_id, "city_name": city_name, "style_notes": style_notes},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        url = resp.json()["moodboard_url"]
+        print(f"style moodboard: got {url}")
+        return url
+    except Exception as e:
+        print(f"style moodboard generation failed, continuing without it: {type(e).__name__}: {e}")
+        return None
+
+
+def _fetch_venue_notes(venue_url: str, identity_token: str) -> str | None:
+    """Stop-specific logistics via Parallel's Extract API, pointed at the
+    venue/promoter URL the campaign creator supplied for this stop -- a
+    nice-to-have on top of the core brief, never allowed to block it. A
+    failure here (bad URL, extraction turning up nothing) degrades
+    gracefully: the brief still finalizes without venue notes, same shape
+    as pronunciation audio and the style moodboard above."""
+    print(f"venue notes: extracting from {venue_url}")
+    try:
+        resp = requests.post(
+            f"{TOUR_DATA_API}/extract_venue_info",
+            headers={"Authorization": f"Bearer {identity_token}"},
+            json={"urls": [venue_url]},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        notes = resp.json()
+        print(f"venue notes: got confidence={notes.get('confidence')}")
+        return json.dumps(notes)
+    except Exception as e:
+        print(f"venue notes extraction failed, continuing without it: {type(e).__name__}: {e}")
+        return None
+
+
+_MIN_FINALIZED_STOPS_FOR_INSIGHTS = 2
+
+
+def _synthesize_campaign_insights_step(campaign_id: str, identity_token: str, city_names: dict[str, str]) -> None:
+    """Runs once at the end of run_campaign(), after every stop has had its
+    chance to finalize -- a nice-to-have layered on top of the core per-city
+    pipeline, never allowed to fail the whole campaign run. Needs at least
+    two finalized stops or there's no cross-city pattern to find."""
+    try:
+        resp = requests.get(
+            f"{TOUR_DATA_API}/city_briefs",
+            headers={"Authorization": f"Bearer {identity_token}"},
+            params={"campaign_id": campaign_id},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        finalized = [b for b in resp.json().get("briefs", []) if b.get("status") == "final"]
+        if len(finalized) < _MIN_FINALIZED_STOPS_FOR_INSIGHTS:
+            print(f"[{campaign_id}] skipping campaign insights -- only {len(finalized)} finalized stop(s)")
+            return
+
+        cities_payload = [
+            {
+                "city_id": b["city_id"],
+                "city_name": city_names.get(b["city_id"], b["city_id"]),
+                "culture_summary": b.get("culture_summary"),
+                "local_delight_summary": b.get("local_delight_summary"),
+                "talent_brief_json": b.get("talent_brief_json"),
+            }
+            for b in finalized
+        ]
+        synth_resp = requests.post(
+            f"{TOUR_DATA_API}/synthesize_campaign_insights",
+            headers={"Authorization": f"Bearer {identity_token}"},
+            json={"campaign_id": campaign_id, "cities": cities_payload},
+            timeout=60,
+        )
+        synth_resp.raise_for_status()
+        insights = synth_resp.json()["insights"]
+        print(f"[{campaign_id}] campaign insights: {len(insights)} finding(s)")
+
+        insert_resp = requests.post(
+            f"{TOUR_DATA_API}/campaign_insights",
+            headers={"Authorization": f"Bearer {identity_token}"},
+            json={"campaign_id": campaign_id, "insights_json": json.dumps(insights)},
+            timeout=30,
+        )
+        insert_resp.raise_for_status()
+    except Exception as e:
+        print(f"[{campaign_id}] campaign insights synthesis failed, continuing: {type(e).__name__}: {e}")
 
 
 def _fetch_selected_metrics(campaign_id: str, identity_token: str) -> list[str]:
@@ -367,6 +514,7 @@ def run_city(
     stop_date: str,
     campaign_title: str,
     selected_metrics: list[str] | None = None,
+    venue_url: str | None = None,
     max_turns: int = 10,
 ) -> str | None:
     if _brief_already_final(campaign_id, city_id, _auth_token("identity", audience=TOUR_DATA_API)):
@@ -480,6 +628,7 @@ def run_city(
 
     collected["talent_brief_json"] = talent_brief_json
     brief_id = f"{campaign_id}-{city_id}-live-001"
+    local_phrases = (collected.get("local_delight") or {}).get("local_phrases", [])[:3]
 
     render_payload = {
         "brief_id": brief_id,
@@ -490,7 +639,7 @@ def run_city(
         "enthusiasm_score": collected.get("enthusiasm_score"),
         "fan_behavior_style": collected.get("fan_behavior_style"),
         "grounding_check_passed": True,
-        "local_phrases": (collected.get("local_delight") or {}).get("local_phrases", [])[:3],
+        "local_phrases": local_phrases,
         "talent_brief": _brief_sections(collected["talent_brief_json"]),
     }
     delight_token = _auth_token("identity", audience=DELIGHT_RENDERER)
@@ -499,6 +648,17 @@ def run_city(
     )
     render_resp.raise_for_status()
     delight_card_url = render_resp.json()["delight_card_url"]
+
+    pronunciation_audio = _synthesize_pronunciation_audio(
+        [p["phrase"] if isinstance(p, dict) else p for p in local_phrases], tour_data_token
+    )
+
+    style_notes = _style_notes_from_collected(collected)
+    style_moodboard_url = (
+        _generate_style_moodboard(city_id, city_name, style_notes, tour_data_token) if style_notes else None
+    )
+
+    venue_notes_json = _fetch_venue_notes(venue_url, tour_data_token) if venue_url else None
 
     insert_payload = {
         "brief_id": brief_id,
@@ -513,6 +673,9 @@ def run_city(
         "grounding_check_notes": "Automated driver: grounding check passed via live Playbook run.",
         "delight_card_url": delight_card_url,
         "demographic_snapshot_json": json.dumps(demographic_snapshot) if demographic_snapshot else None,
+        "pronunciation_audio_json": json.dumps(pronunciation_audio) if pronunciation_audio else None,
+        "style_moodboard_url": style_moodboard_url,
+        "venue_notes_json": venue_notes_json,
     }
     insert_resp = requests.post(
         f"{TOUR_DATA_API}/city_briefs", headers={"Authorization": f"Bearer {tour_data_token}"}, json=insert_payload, timeout=60
@@ -538,7 +701,10 @@ def _run_city_safe(
     down sibling stops still in flight."""
     city_id = stop["city_id"]
     try:
-        url = run_city(city_id, stop["city_name"], campaign_id, stop["stop_date"], campaign_title, selected_metrics)
+        url = run_city(
+            city_id, stop["city_name"], campaign_id, stop["stop_date"], campaign_title,
+            selected_metrics, stop.get("venue_url"),
+        )
         return city_id, url
     except Exception as e:
         print(f"[{city_id}] FAILED with an unhandled exception: {e}")
@@ -573,6 +739,9 @@ def run_campaign(campaign_id: str) -> dict[str, str | None]:
         for future in as_completed(futures):
             city_id, delight_card_url = future.result()
             results[city_id] = delight_card_url
+
+    city_names = {s["city_id"]: s["city_name"] for s in stops}
+    _synthesize_campaign_insights_step(campaign_id, lookup_token, city_names)
     return results
 
 

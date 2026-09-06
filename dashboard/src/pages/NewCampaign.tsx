@@ -1,19 +1,50 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Check, Loader2 } from "lucide-react";
-import { createCampaign } from "../lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Check, Loader2, TrendingUp } from "lucide-react";
+import { createCampaign, getGenreRecommendations, listCities } from "../lib/api";
 import { useCampaignContext } from "../lib/campaignContext";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StrategyChat } from "../components/ui/StrategyChat";
 import type { SuggestedCampaign } from "../lib/types";
 
-const SUPPORTED_CITIES = [
-  { city_id: "mumbai", city_name: "Mumbai" },
-  { city_id: "london", city_name: "London" },
-  { city_id: "tokyo", city_name: "Tokyo" },
-  { city_id: "sao_paulo", city_name: "São Paulo" },
-  { city_id: "new_york", city_name: "New York" },
-];
+const GENRE_DEBOUNCE_MS = 500;
+
+// Cross-campaign learning: real historical enthusiasm outcomes for this
+// genre, aggregated across every past campaign's finalized briefs -- not a
+// static seed table. Naturally silent until enough campaigns have actually
+// run; an empty state here just means "no signal yet," not an error, so it
+// renders nothing rather than a forced null-state message.
+function GenreHistoricalHint({ genre }: { genre: string }) {
+  const [debounced, setDebounced] = useState("");
+
+  useEffect(() => {
+    const trimmed = genre.trim();
+    if (!trimmed) {
+      setDebounced("");
+      return;
+    }
+    const t = setTimeout(() => setDebounced(trimmed), GENRE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [genre]);
+
+  const { data } = useQuery({
+    queryKey: ["genreRecommendations", debounced],
+    queryFn: () => getGenreRecommendations(debounced),
+    enabled: debounced.length > 0,
+  });
+
+  const top = data?.recommendations?.[0];
+  if (!top) return null;
+
+  return (
+    <p className="mt-1.5 flex items-center gap-1.5 font-sans text-[11.5px] text-ink-muted">
+      <TrendingUp size={12} className="text-gold" />
+      {top.city_id} historically drove the highest fan enthusiasm ({Math.round(top.avg_enthusiasm_score)}/100 avg
+      across {top.sample_size} past {top.sample_size === 1 ? "stop" : "stops"}) for this genre
+    </p>
+  );
+}
 
 const CAMPAIGN_TYPES = [
   { value: "film_promo_tour", label: "Film Promo Tour" },
@@ -38,6 +69,7 @@ const METRIC_OPTIONS = [
 interface StopEntry {
   city_id: string;
   stop_date: string;
+  venue_url?: string;
 }
 
 // The native <input type="date"> renders in whatever dd/mm/yyyy vs mm/dd/yyyy
@@ -61,6 +93,9 @@ export function NewCampaign() {
   const navigate = useNavigate();
   const { setActiveCampaignId, refresh } = useCampaignContext();
 
+  const { data: citiesData } = useQuery({ queryKey: ["cities"], queryFn: listCities });
+  const cities = citiesData?.cities ?? [];
+
   const [title, setTitle] = useState("");
   const [campaignType, setCampaignType] = useState(CAMPAIGN_TYPES[0].value);
   const [genre, setGenre] = useState("");
@@ -82,6 +117,10 @@ export function NewCampaign() {
     setStops((prev) => prev.map((s) => (s.city_id === cityId ? { ...s, stop_date: date } : s)));
   }
 
+  function setVenueUrl(cityId: string, url: string) {
+    setStops((prev) => prev.map((s) => (s.city_id === cityId ? { ...s, venue_url: url } : s)));
+  }
+
   function toggleMetric(key: string) {
     setSelectedMetrics((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
   }
@@ -93,7 +132,7 @@ export function NewCampaign() {
     setTalentRoster(suggested.talent_roster.join(", "));
     setStops(
       suggested.stops
-        .filter((s) => SUPPORTED_CITIES.some((c) => c.city_id === s.city_id))
+        .filter((s) => cities.some((c) => c.city_id === s.city_id))
         .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date }))
     );
   }
@@ -120,7 +159,11 @@ export function NewCampaign() {
           .filter(Boolean),
         stops: [...stops]
           .sort((a, b) => a.stop_date.localeCompare(b.stop_date))
-          .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date })),
+          .map((s) => ({
+            city_id: s.city_id,
+            stop_date: s.stop_date,
+            ...(s.venue_url?.trim() ? { venue_url: s.venue_url.trim() } : {}),
+          })),
         selected_metrics: selectedMetrics,
       });
       // Must await the campaigns list refresh before setting the new id
@@ -146,7 +189,17 @@ export function NewCampaign() {
         <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Set up a tour</p>
         <h1 className="mt-1 font-display text-[30px] text-canvas-text">New Campaign</h1>
         <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
-          Stops are limited to the five cities with full culture, fan, and delight coverage.
+          {cities.length > 0 ? (
+            <>
+              Stops can be any of the {cities.length} known cities — need one that's missing?{" "}
+              <Link to="/cities/add" className="text-gold underline hover:no-underline">
+                Add it first
+              </Link>
+              .
+            </>
+          ) : (
+            "Loading known cities…"
+          )}
         </p>
       </header>
 
@@ -169,6 +222,7 @@ export function NewCampaign() {
               placeholder="e.g. synth-pop"
               className="w-full rounded-lg border border-line bg-paper-raised px-3 py-2 font-sans text-[13px] text-ink outline-none focus:border-ink/30"
             />
+            <GenreHistoricalHint genre={genre} />
           </Field>
           <Field label="Campaign Type">
             <select
@@ -198,48 +252,59 @@ export function NewCampaign() {
             City Stops
           </p>
           <div className="space-y-2">
-            {SUPPORTED_CITIES.map((city) => {
+            {cities.map((city) => {
               const stop = stops.find((s) => s.city_id === city.city_id);
               const selected = !!stop;
               const accent = cityAccentOnPaper(city.city_id);
               return (
                 <div
                   key={city.city_id}
-                  className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                  className={`rounded-lg border px-3 py-2.5 transition-colors ${
                     selected ? "border-ink/15 bg-black/[0.02]" : "border-line"
                   }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleCity(city.city_id)}
-                    className="flex flex-1 items-center gap-2.5 text-left"
-                  >
-                    <span
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border"
-                      style={{
-                        backgroundColor: selected ? accent : "transparent",
-                        borderColor: selected ? accent : "rgba(20,21,26,0.2)",
-                      }}
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleCity(city.city_id)}
+                      className="flex flex-1 items-center gap-2.5 text-left"
                     >
-                      {selected && <Check size={11} className="text-white" />}
-                    </span>
-                    <span className="font-sans text-[13px] text-ink">{city.city_name}</span>
-                  </button>
-                  {selected && (
-                    <div className="flex items-center gap-2">
                       <span
-                        className={`font-sans text-[12px] ${stop.stop_date ? "text-ink" : "text-ink-muted italic"}`}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border"
+                        style={{
+                          backgroundColor: selected ? accent : "transparent",
+                          borderColor: selected ? accent : "rgba(20,21,26,0.2)",
+                        }}
                       >
-                        {stop.stop_date ? formatStopDate(stop.stop_date) : "Pick a date"}
+                        {selected && <Check size={11} className="text-white" />}
                       </span>
-                      <input
-                        type="date"
-                        min={TODAY_ISO}
-                        value={stop.stop_date}
-                        onChange={(e) => setStopDate(city.city_id, e.target.value)}
-                        className="rounded-md border border-line bg-paper-raised px-2 py-1 font-sans text-[12px] text-ink outline-none focus:border-ink/30"
-                      />
-                    </div>
+                      <span className="font-sans text-[13px] text-ink">{city.city_name}</span>
+                    </button>
+                    {selected && (
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-sans text-[12px] ${stop.stop_date ? "text-ink" : "text-ink-muted italic"}`}
+                        >
+                          {stop.stop_date ? formatStopDate(stop.stop_date) : "Pick a date"}
+                        </span>
+                        <input
+                          type="date"
+                          min={TODAY_ISO}
+                          value={stop.stop_date}
+                          onChange={(e) => setStopDate(city.city_id, e.target.value)}
+                          className="rounded-md border border-line bg-paper-raised px-2 py-1 font-sans text-[12px] text-ink outline-none focus:border-ink/30"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {selected && (
+                    <input
+                      type="url"
+                      value={stop.venue_url ?? ""}
+                      onChange={(e) => setVenueUrl(city.city_id, e.target.value)}
+                      placeholder="Venue or promoter URL (optional) — pulls capacity & logistics notes"
+                      className="mt-2 w-full rounded-md border border-line bg-paper-raised px-2 py-1.5 font-sans text-[12px] text-ink outline-none placeholder:text-ink-muted/70 focus:border-ink/30"
+                    />
                   )}
                 </div>
               );

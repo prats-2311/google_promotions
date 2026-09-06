@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Clapperboard, LayoutGrid, ArrowLeftRight, ChevronsUpDown, Plus, Check, HelpCircle } from "lucide-react";
+import { Clapperboard, LayoutGrid, ArrowLeftRight, ChevronsUpDown, Plus, Check, HelpCircle, Globe2 } from "lucide-react";
 import { useCampaignContext } from "../lib/campaignContext";
 import { TourGuide, hasSeenTour } from "./ui/TourGuide";
 
 const NAV_ITEMS = [
   { to: "/", label: "Campaign", icon: LayoutGrid, end: true },
   { to: "/compare", label: "Compare Cities", icon: ArrowLeftRight, end: false },
+  { to: "/cities/add", label: "Add Cities", icon: Globe2, end: false },
 ];
 
 function typeLabel(campaignType: string) {

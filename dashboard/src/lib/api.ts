@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse } from "./types";
 
 // Defense in depth alongside the BFF's own callTool timeout (server/index.js)
 // -- a request that somehow hangs past this still rejects instead of leaving
@@ -17,6 +17,103 @@ export function getCampaignOverview(campaignId: string) {
 
 export function listCampaigns() {
   return getJson<{ campaigns: Campaign[] }>("/api/campaigns");
+}
+
+export function getGenreRecommendations(genre: string) {
+  return getJson<GenreRecommendationsResponse>(`/api/genre-recommendations?genre=${encodeURIComponent(genre)}`);
+}
+
+export async function createCityMonitor(
+  campaignId: string,
+  cityId: string,
+  cityName: string,
+  monitorType: "cultural" | "safety" = "cultural"
+) {
+  const res = await fetch("/api/city-monitors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      campaign_id: campaignId,
+      city_id: cityId,
+      city_name: cityName,
+      monitor_type: monitorType,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`create city monitor failed: ${res.status}`);
+  return res.json() as Promise<{ monitor_id: string; created: boolean }>;
+}
+
+export async function triggerCityMonitor(monitorId: string) {
+  const res = await fetch("/api/trigger-city-monitor", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ monitor_id: monitorId }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`trigger city monitor failed: ${res.status}`);
+  return res.json() as Promise<{ status: string }>;
+}
+
+export function getCityMonitorEvents(monitorId: string) {
+  return getJson<{ events: MonitorEvent[] }>(`/api/city-monitor-events?monitor_id=${encodeURIComponent(monitorId)}`);
+}
+
+export async function synthesizeStopOutcome(
+  campaignId: string,
+  cityId: string,
+  cityName: string,
+  campaignTitle: string,
+  stopDate: string
+) {
+  const res = await fetch("/api/synthesize-stop-outcome", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      campaign_id: campaignId,
+      city_id: cityId,
+      city_name: cityName,
+      campaign_title: campaignTitle,
+      stop_date: stopDate,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`synthesize stop outcome failed: ${res.status}`);
+  return res.json() as Promise<StopOutcome>;
+}
+
+export function getStopOutcome(campaignId: string, cityId: string) {
+  return getJson<{ campaign_id: string; city_id: string; generated_at: string | null; outcome_json: string | null }>(
+    `/api/stop-outcomes?campaign_id=${encodeURIComponent(campaignId)}&city_id=${encodeURIComponent(cityId)}`
+  );
+}
+
+export async function saveStopOutcome(campaignId: string, cityId: string, outcome: StopOutcome) {
+  const res = await fetch("/api/stop-outcomes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId, city_id: cityId, outcome_json: JSON.stringify(outcome) }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`save stop outcome failed: ${res.status}`);
+  return res.json() as Promise<{ campaign_id: string; city_id: string; status: string }>;
+}
+
+export function listCities() {
+  return getJson<{ cities: City[] }>("/api/cities");
+}
+
+export async function bulkAddCities(cityNames: string[]) {
+  const res = await fetch("/api/bulk-add-cities", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ city_names: cityNames }),
+    // Real Parallel Task API research for multiple cities takes longer than
+    // the default 30s budget -- give it real room rather than a false timeout.
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error(`bulk add cities failed: ${res.status}`);
+  return res.json() as Promise<BulkAddCitiesResponse>;
 }
 
 export async function createCampaign(input: NewCampaignInput) {

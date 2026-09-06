@@ -16,6 +16,17 @@ def test_brief_sections_handles_malformed_json_without_raising():
     assert result == {"lean_into": [], "avoid": [], "fan_questions": []}
 
 
+def test_brief_sections_extracts_question_text_from_talking_point_objects():
+    """high_probability_fan_questions now holds {question, suggested_response}
+    objects -- the delight card is a printable quick-reference, not the
+    place for a full talking point, so only the question text belongs here."""
+    result = _brief_sections(
+        '{"topics_to_lean_into": ["a"], "topics_to_avoid": ["b"], '
+        '"high_probability_fan_questions": [{"question": "c", "suggested_response": "d"}]}'
+    )
+    assert result == {"lean_into": ["a"], "avoid": ["b"], "fan_questions": ["c"]}
+
+
 def test_known_context_includes_culture_summary_when_present():
     ctx = _known_context({"culture_summary": "be polite"})
     assert "culture_summary: be polite" in ctx

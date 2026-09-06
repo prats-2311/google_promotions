@@ -250,11 +250,20 @@ app.post("/api/campaigns", async (req, res) => {
 app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const [campaign, stopsResp, briefsResp] = await Promise.all([
+    const [campaign, stopsResp, briefsResp, insightsResp] = await Promise.all([
       cachedCallTool(`/campaigns?campaign_id=${encodeURIComponent(campaignId)}`),
       cachedCallTool(`/campaign_stops?campaign_id=${encodeURIComponent(campaignId)}`),
       cachedCallTool(`/city_briefs?campaign_id=${encodeURIComponent(campaignId)}`),
+      cachedCallTool(`/campaign_insights?campaign_id=${encodeURIComponent(campaignId)}`),
     ]);
+    let campaignInsights = [];
+    if (insightsResp?.insights_json) {
+      try {
+        campaignInsights = JSON.parse(insightsResp.insights_json);
+      } catch {
+        campaignInsights = [];
+      }
+    }
     const briefByCity = Object.fromEntries(briefsResp.briefs.map((b) => [b.city_id, b]));
 
     const cities = await Promise.all(
@@ -294,7 +303,7 @@ app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
       })
     );
 
-    res.json({ campaign, cities });
+    res.json({ campaign, cities, campaignInsights });
   } catch (err) {
     res.status(502).json({ error: String(err) });
   }
@@ -329,6 +338,14 @@ app.get("/api/campaigns/:campaignId/cities/:cityId", async (req, res) => {
         demographicSnapshot = null;
       }
     }
+    let pronunciationAudio = null;
+    if (brief?.pronunciation_audio_json) {
+      try {
+        pronunciationAudio = JSON.parse(brief.pronunciation_audio_json);
+      } catch {
+        pronunciationAudio = null;
+      }
+    }
 
     res.json({
       campaign,
@@ -338,6 +355,7 @@ app.get("/api/campaigns/:campaignId/cities/:cityId", async (req, res) => {
       fanSignal,
       brief,
       demographicSnapshot,
+      pronunciationAudio,
     });
   } catch (err) {
     res.status(502).json({ error: String(err) });
@@ -386,6 +404,125 @@ app.post("/api/campaign-strategy-chat", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
     });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/city-monitors", async (req, res) => {
+  try {
+    const result = await callTool("/city_monitors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/trigger-city-monitor", async (req, res) => {
+  try {
+    const result = await callTool("/trigger_city_monitor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.get("/api/city-monitor-events", async (req, res) => {
+  try {
+    const monitorId = req.query.monitor_id;
+    if (!monitorId) return res.status(400).json({ error: "missing required query param: monitor_id" });
+    // Never cache-backed -- the whole point is fetching the freshest state
+    // each poll, and this is a cheap Parallel API read, not a BigQuery
+    // query with a job-orchestration floor to amortize.
+    const result = await callTool(`/city_monitor_events?monitor_id=${encodeURIComponent(monitorId)}`);
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/synthesize-stop-outcome", async (req, res) => {
+  try {
+    const result = await callTool("/synthesize_stop_outcome", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.get("/api/stop-outcomes", async (req, res) => {
+  try {
+    const { campaign_id: campaignId, city_id: cityId } = req.query;
+    if (!campaignId || !cityId) {
+      return res.status(400).json({ error: "missing required query param(s): campaign_id, city_id" });
+    }
+    const result = await callTool(
+      `/stop_outcomes?campaign_id=${encodeURIComponent(campaignId)}&city_id=${encodeURIComponent(cityId)}`
+    );
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/stop-outcomes", async (req, res) => {
+  try {
+    const result = await callTool("/stop_outcomes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.get("/api/cities", async (req, res) => {
+  try {
+    const result = await cachedCallTool("/cities_list");
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/bulk-add-cities", async (req, res) => {
+  try {
+    const result = await callTool("/bulk_add_cities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    // Newly added cities must be selectable immediately (New Campaign's city
+    // picker, WebMcpTools' enum) -- same reasoning as campaign creation's
+    // invalidateCache() call, not the campaign_stops POST validation itself,
+    // which already queries the cities table live, uncached.
+    if (result.added?.length) invalidateCache();
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.get("/api/genre-recommendations", async (req, res) => {
+  try {
+    const genre = req.query.genre;
+    if (!genre) return res.status(400).json({ error: "missing required query param: genre" });
+    const result = await cachedCallTool(`/genre_recommendations?genre=${encodeURIComponent(genre)}`);
     res.json(result);
   } catch (err) {
     res.status(502).json({ error: String(err) });
