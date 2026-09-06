@@ -25,7 +25,8 @@ import { StatMeter } from "../components/ui/StatMeter";
 import { getCityDetail } from "../lib/api";
 import type { CityDetail as CityDetailData, TalentBrief, TraceStep } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
-import { AgentPlanning, type PlanStep } from "../components/ui/agent-planning";
+import { ThinkingTrace, type TraceStepItem } from "../components/ui/ThinkingTrace";
+import { Tabs } from "../components/ui/Tabs";
 import { deriveTrace } from "../lib/deriveTrace";
 import { useCampaignContext } from "../lib/campaignContext";
 import { CityDetailSkeleton } from "../components/ui/Skeletons";
@@ -37,7 +38,7 @@ const TRACE_ICON_BY_KIND: Record<TraceStep["kind"], React.ReactNode> = {
   utterance: <MessageCircle className="w-3.5 h-3.5" />,
 };
 
-function toPlanSteps(steps: TraceStep[]): PlanStep[] {
+function toTraceSteps(steps: TraceStep[]): TraceStepItem[] {
   return steps.map((step, i) => ({
     id: `${i}-${step.label}`,
     title: step.label,
@@ -103,25 +104,12 @@ export function CityDetail() {
 
       {data.brief && (
         <div className="mb-6">
-          <AgentPlanning title="How this brief was generated" steps={toPlanSteps(deriveTrace(data))} defaultExpanded={false} />
+          <ThinkingTrace title="How this brief was generated" steps={toTraceSteps(deriveTrace(data))} defaultExpanded={false} />
         </div>
       )}
 
-      <div className="mb-6 flex gap-1 border-b border-canvas-line">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`relative px-4 py-2.5 font-sans text-[13px] transition-colors ${
-              tab === t ? "text-canvas-text" : "text-canvas-muted hover:text-canvas-text"
-            }`}
-          >
-            {TAB_LABEL[t]}
-            {tab === t && (
-              <motion.div layoutId="tab-underline" className="absolute inset-x-0 -bottom-px h-0.5" style={{ backgroundColor: accent }} />
-            )}
-          </button>
-        ))}
+      <div className="mb-6">
+        <Tabs items={TABS.map((t) => ({ value: t, label: TAB_LABEL[t] }))} value={tab} onChange={setTab} accent={accent} />
       </div>
 
       {tab === "intelligence" && <IntelligenceTab data={data} accent={accentPaper} />}

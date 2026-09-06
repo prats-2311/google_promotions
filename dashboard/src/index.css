@@ -49,6 +49,15 @@ body {
   color: var(--color-ink);
 }
 
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 @keyframes skeleton-shimmer {
   0% {
     background-position: -400px 0;
