@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist } from "./types";
 
 // Defense in depth alongside the BFF's own callTool timeout (server/index.js)
 // -- a request that somehow hangs past this still rejects instead of leaving
@@ -120,6 +120,49 @@ export async function discoverVenues(cityName: string, country?: string | null) 
   });
   if (!res.ok) throw new Error(`discover venues failed: ${res.status}`);
   return res.json() as Promise<VenueDiscoveryResponse>;
+}
+
+export async function getVisaRequirements(artistNationality: string, destinationCountry: string) {
+  const res = await fetch("/api/visa-requirements", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ artist_nationality: artistNationality, destination_country: destinationCountry }),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) throw new Error(`visa requirements lookup failed: ${res.status}`);
+  return res.json() as Promise<VisaRequirements>;
+}
+
+export async function getSeasonalWeatherRisk(cityName: string, monthOrDate: string, country?: string | null) {
+  const res = await fetch("/api/seasonal-weather-risk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ city_name: cityName, month_or_date: monthOrDate, ...(country ? { country } : {}) }),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!res.ok) throw new Error(`seasonal weather risk lookup failed: ${res.status}`);
+  return res.json() as Promise<SeasonalWeatherRisk>;
+}
+
+export function getStopSafetyChecklist(campaignId: string, cityId: string) {
+  return getJson<StopSafetyChecklist>(
+    `/api/stop-safety-checklist?campaign_id=${encodeURIComponent(campaignId)}&city_id=${encodeURIComponent(cityId)}`
+  );
+}
+
+export async function saveStopSafetyChecklist(
+  campaignId: string,
+  cityId: string,
+  fields: { showstop_manager_assigned: boolean; showstop_manager_name: string | null; capacity_confirmed: boolean }
+) {
+  const res = await fetch("/api/stop-safety-checklist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId, city_id: cityId, ...fields }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`save stop safety checklist failed: ${res.status}`);
+  return res.json() as Promise<{ campaign_id: string; city_id: string; status: string }>;
 }
 
 export function listCities() {

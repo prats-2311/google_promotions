@@ -144,6 +144,32 @@ export interface StopOutcome {
   notice?: string;
 }
 
+export interface StopSafetyChecklist {
+  campaign_id: string;
+  city_id: string;
+  generated_at: string | null;
+  showstop_manager_assigned: boolean | null;
+  showstop_manager_name: string | null;
+  capacity_confirmed: boolean | null;
+}
+
+export interface VisaRequirements {
+  source: "parallel_live";
+  citations: MonitorCitation[];
+  visa_type: string | null;
+  typical_lead_time_weeks: number | null;
+  notes: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface SeasonalWeatherRisk {
+  source: "parallel_live";
+  citations: MonitorCitation[];
+  risk_level: "high" | "medium" | "low" | null;
+  notes: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
 export interface VenueCommutePoint {
   name: string;
   distance_or_travel_time: string;
@@ -156,6 +182,7 @@ export interface VenueNotes {
   typical_event_format: string | null;
   logistics_notes: string | null;
   technical_rider_notes: string | null;
+  customs_notes: string | null;
   nearest_airport: VenueCommutePoint | null;
   nearest_railway_station: VenueCommutePoint | null;
   confidence: "high" | "medium" | "low";

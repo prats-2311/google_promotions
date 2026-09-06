@@ -517,6 +517,60 @@ app.post("/api/discover-venues", async (req, res) => {
   }
 });
 
+app.post("/api/visa-requirements", async (req, res) => {
+  try {
+    const result = await callTool("/visa_requirements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/seasonal-weather-risk", async (req, res) => {
+  try {
+    const result = await callTool("/seasonal_weather_risk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.get("/api/stop-safety-checklist", async (req, res) => {
+  try {
+    const { campaign_id: campaignId, city_id: cityId } = req.query;
+    if (!campaignId || !cityId) {
+      return res.status(400).json({ error: "missing required query param(s): campaign_id, city_id" });
+    }
+    const result = await callTool(
+      `/stop_safety_checklist?campaign_id=${encodeURIComponent(campaignId)}&city_id=${encodeURIComponent(cityId)}`
+    );
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/stop-safety-checklist", async (req, res) => {
+  try {
+    const result = await callTool("/stop_safety_checklist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.get("/api/cities", async (req, res) => {
   try {
     const result = await cachedCallTool("/cities_list");

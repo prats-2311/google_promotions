@@ -147,6 +147,19 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.stop_outcomes` (
   outcome_json STRING
 );
 
+-- One row per planner-filled day-of-show safety/capacity checklist entry --
+-- explicitly NOT AI-synthesized (no Parallel/Gemini call), a manual
+-- planner-input record, same insert-only/latest-by-generated_at shape as
+-- stop_outcomes above.
+CREATE TABLE IF NOT EXISTS `tour_intelligence.stop_safety_checklist` (
+  campaign_id STRING NOT NULL,
+  city_id STRING NOT NULL,
+  generated_at TIMESTAMP,
+  showstop_manager_assigned BOOL,
+  showstop_manager_name STRING,
+  capacity_confirmed BOOL
+);
+
 -- One row per campaign-insights synthesis run (a rerun after new stops finish
 -- produces another row; consumers take the latest by generated_at, same
 -- pattern as city_briefs). Written once at the end of a full campaign run,

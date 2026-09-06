@@ -877,6 +877,99 @@ def live_city_demographics_search():
     })
 
 
+def _seasonal_weather_search(city_name: str, country: str | None, month_or_date: str) -> list[dict]:
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    place = f"{city_name}, {country}" if country else city_name
+    search = _parallel_client.search(
+        objective=(
+            f"Typical seasonal weather risk (monsoon, hurricane/cyclone season, extreme heat, heavy "
+            f"rain, or other severe weather) in {place} during {month_or_date}, relevant to a touring "
+            f"musician or actor's large outdoor event."
+        ),
+        search_queries=[
+            f"{place} weather {month_or_date}",
+            f"{place} monsoon hurricane season {month_or_date}",
+            f"{place} extreme weather risk outdoor events",
+        ],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+_SEASONAL_WEATHER_RISK_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "risk_level": {"type": "STRING", "enum": ["high", "medium", "low"], "nullable": True},
+        "notes": {"type": "STRING", "nullable": True},
+        "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+    },
+    "required": ["risk_level", "notes", "confidence"],
+}
+
+
+@app.post("/seasonal_weather_risk")
+def seasonal_weather_risk():
+    """Per-city, per-month seasonal weather risk fact for touring/large
+    outdoor events -- mirrors /live_city_demographics_search's live-search-
+    then-synthesize pattern for a city-level fact with no curated seed
+    data."""
+    payload = request.get_json(silent=True) or {}
+    city_name = payload.get("city_name")
+    month_or_date = payload.get("month_or_date")
+    if not city_name or not month_or_date:
+        return jsonify({"error": "missing required field(s): city_name, month_or_date"}), 400
+    country = payload.get("country")
+
+    try:
+        city_name = _validate_place_name(city_name, "city_name")
+        if country:
+            country = _validate_place_name(country, "country")
+        # Reuses _validate_venue_name (alnum + the same punctuation
+        # allowlist) rather than _validate_place_name: month_or_date can
+        # carry digits ("October", "2026-10-15") that isalpha() would reject.
+        month_or_date = _validate_venue_name(month_or_date)
+    except PlaceNameValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        results = _seasonal_weather_search(city_name, country, month_or_date)
+    except parallel.APIError as e:
+        return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not results:
+        return jsonify({
+            "source": "parallel_live", "risk_level": None, "notes": None,
+            "confidence": "low", "citations": [],
+        })
+
+    excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in results[:8]
+    )
+    prompt = (
+        f"Using ONLY the search excerpts below, assess the typical seasonal weather risk_level "
+        f"(\"high\", \"medium\", or \"low\") for a large outdoor touring event in {city_name} during "
+        f"{month_or_date} -- monsoon, hurricane/cyclone season, extreme heat, or other severe weather -- "
+        f"plus a short notes summary. Use null for risk_level and notes if the excerpts don't actually "
+        f"support a judgment -- never guess. Set confidence to \"low\" if the excerpts are thin or "
+        f"ambiguous.\n\n"
+        f"SEARCH EXCERPTS:\n{excerpt_block}"
+    )
+    try:
+        synthesized = _call_gemini_json(prompt, _SEASONAL_WEATHER_RISK_SCHEMA)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
+
+    return jsonify({
+        "source": "parallel_live",
+        "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        **synthesized,
+    })
+
+
 def _venue_discovery_search(
     city_name: str, country: str | None, capacity_hint: str | None, format_hint: str | None
 ) -> list[dict]:
@@ -1078,6 +1171,100 @@ def local_crew_vendors():
     })
 
 
+def _visa_requirements_search(artist_nationality: str, destination_country: str) -> list[dict]:
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    search = _parallel_client.search(
+        objective=(
+            f"The typical visa category and processing lead time for a {artist_nationality} touring "
+            f"musician or actor performing in {destination_country}, for tour scheduling risk planning."
+        ),
+        search_queries=[
+            f"{artist_nationality} artist visa {destination_country}",
+            f"{destination_country} performer visa processing time",
+            f"{destination_country} touring musician visa requirements",
+        ],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+_VISA_REQUIREMENTS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "visa_type": {"type": "STRING", "nullable": True},
+        "typical_lead_time_weeks": {"type": "INTEGER", "nullable": True},
+        "notes": {"type": "STRING", "nullable": True},
+        "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+    },
+    "required": ["visa_type", "typical_lead_time_weeks", "notes", "confidence"],
+}
+
+
+@app.post("/visa_requirements")
+def visa_requirements():
+    """Visa/border timing risk: real Parallel Search for the visa category
+    and typical processing lead time a touring artist of a given
+    nationality needs for a destination country -- purely on-demand, no
+    curated seed data. The stop_date-vs-lead-time comparison itself is left
+    to the caller; this route only returns the grounded fact (2026 lead
+    times run 6-12+ months for US touring visas, per real reporting --
+    genuinely actionable against a stop_date, unlike most "logistics"
+    facts)."""
+    payload = request.get_json(silent=True) or {}
+    artist_nationality = payload.get("artist_nationality")
+    destination_country = payload.get("destination_country")
+    if not artist_nationality or not destination_country:
+        return jsonify({"error": "missing required field(s): artist_nationality, destination_country"}), 400
+
+    try:
+        artist_nationality = _validate_place_name(artist_nationality, "artist_nationality")
+        destination_country = _validate_place_name(destination_country, "destination_country")
+    except PlaceNameValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        results = _visa_requirements_search(artist_nationality, destination_country)
+    except parallel.APIError as e:
+        return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not results:
+        return jsonify({
+            "source": "parallel_live",
+            "visa_type": None,
+            "typical_lead_time_weeks": None,
+            "notes": None,
+            "confidence": "low",
+            "citations": [],
+        })
+
+    excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in results[:8]
+    )
+    prompt = (
+        f"Using ONLY the search excerpts below, state the typical visa_type (category/name) and "
+        f"typical_lead_time_weeks (an integer number of weeks -- convert months to weeks, e.g. 11.5 "
+        f"months is about 50 weeks) a {artist_nationality} touring musician or actor typically needs to "
+        f"enter {destination_country} for a performance, plus a short notes summary. Use null for any "
+        f"field the excerpts don't actually support -- never guess a lead time. Set confidence to "
+        f"\"low\" if the excerpts are thin or ambiguous.\n\n"
+        f"SEARCH EXCERPTS:\n{excerpt_block}"
+    )
+    try:
+        synthesized = _call_gemini_json(prompt, _VISA_REQUIREMENTS_SCHEMA)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
+
+    return jsonify({
+        "source": "parallel_live",
+        "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        **synthesized,
+    })
+
+
 def _venue_commute_search(city_name: str, venue_name: str | None) -> list[dict]:
     place = f"{venue_name}, {city_name}" if venue_name else city_name
     search = _parallel_client.search(
@@ -1102,6 +1289,23 @@ _VENUE_COMMUTE_FIELDS = {
 }
 
 
+def _customs_notes_search(country: str) -> list[dict]:
+    search = _parallel_client.search(
+        objective=(
+            f"Does {country} participate in the ATA Carnet system for temporary equipment import, or "
+            f"does it require a Temporary Import Bond instead, and what's the typical customs lead time "
+            f"for touring production equipment?"
+        ),
+        search_queries=[
+            f"{country} ATA Carnet",
+            f"{country} temporary import bond touring equipment",
+            f"{country} customs lead time production equipment",
+        ],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
 @app.post("/extract_venue_info")
 def extract_venue_info():
     """Stop-specific logistics: real Parallel Extract against a specific
@@ -1122,11 +1326,14 @@ def extract_venue_info():
     if not city_name:
         return jsonify({"error": "missing required field: city_name"}), 400
     venue_name = payload.get("venue_name")
+    country = payload.get("country")
 
     try:
         city_name = _validate_place_name(city_name, "city_name")
         if venue_name:
             venue_name = _validate_venue_name(venue_name)
+        if country:
+            country = _validate_place_name(country, "country")
     except PlaceNameValidationError as e:
         return jsonify({"error": str(e)}), 400
 
@@ -1149,6 +1356,13 @@ def extract_venue_info():
     except parallel.APIError:
         commute_results = []
 
+    customs_results = []
+    if country:
+        try:
+            customs_results = _customs_notes_search(country)
+        except parallel.APIError:
+            customs_results = []
+
     excerpt_block = "\n\n".join(
         f"Source: {r.title or r.url}\nURL: {r.url}\n" + "\n".join(r.excerpts or [])
         for r in results[:8]
@@ -1157,6 +1371,10 @@ def extract_venue_info():
         f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
         for r in commute_results[:5]
     )
+    customs_excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in customs_results[:5]
+    )
     schema = {
         "type": "OBJECT",
         "properties": {
@@ -1164,13 +1382,14 @@ def extract_venue_info():
             "typical_event_format": {"type": "STRING", "nullable": True},
             "logistics_notes": {"type": "STRING", "nullable": True},
             "technical_rider_notes": {"type": "STRING", "nullable": True},
+            "customs_notes": {"type": "STRING", "nullable": True},
             "nearest_airport": _VENUE_COMMUTE_FIELDS,
             "nearest_railway_station": _VENUE_COMMUTE_FIELDS,
             "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
         },
         "required": [
             "capacity", "typical_event_format", "logistics_notes", "technical_rider_notes",
-            "nearest_airport", "nearest_railway_station", "confidence",
+            "customs_notes", "nearest_airport", "nearest_railway_station", "confidence",
         ],
     }
     prompt = (
@@ -1178,11 +1397,15 @@ def extract_venue_info():
         "logistics/etiquette notes relevant to a touring musician or actor, plus technical_rider_notes "
         "-- stage dimensions, rigging, available power, backstage/green room amenities, and loading dock "
         "access, distinct from the audience-facing logistics_notes above -- and the nearest major airport "
-        "and nearest railway/train station for touring crew and talent logistics. Use null for anything "
-        "the content doesn't actually support -- never guess a number, dimension, distance, or travel "
-        "time. Set confidence to \"low\" if the content is thin or ambiguous.\n\n"
+        "and nearest railway/train station for touring crew and talent logistics. Also summarize "
+        "customs_notes -- whether the destination participates in the ATA Carnet system or requires a "
+        "Temporary Import Bond for touring equipment, and typical customs lead time -- using null if no "
+        "country was given or nothing concrete is found. Use null for anything the content doesn't "
+        "actually support -- never guess a number, dimension, distance, or travel time. Set confidence "
+        "to \"low\" if the content is thin or ambiguous.\n\n"
         f"EXTRACTED VENUE PAGE CONTENT:\n{excerpt_block}\n\n"
-        f"COMMUTE SEARCH RESULTS:\n{commute_excerpt_block}"
+        f"COMMUTE SEARCH RESULTS:\n{commute_excerpt_block}\n\n"
+        f"CUSTOMS SEARCH RESULTS:\n{customs_excerpt_block}"
     )
     try:
         synthesized = _call_gemini_json(prompt, schema)
@@ -1191,6 +1414,7 @@ def extract_venue_info():
 
     citations = [{"url": r.url, "title": r.title} for r in results[:8]]
     citations += [{"url": r.get("url"), "title": r.get("title")} for r in commute_results[:5]]
+    citations += [{"url": r.get("url"), "title": r.get("title")} for r in customs_results[:5]]
 
     return jsonify({
         "source": "parallel_extract",
@@ -1741,6 +1965,61 @@ def insert_stop_outcome():
         "outcome_json": payload.get("outcome_json"),
     }
     errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.stop_outcomes", [row])
+    if errors:
+        return jsonify({"error": "insert failed", "details": errors}), 500
+    return jsonify({"campaign_id": row["campaign_id"], "city_id": row["city_id"], "status": "inserted"})
+
+
+@app.get("/stop_safety_checklist")
+def get_stop_safety_checklist():
+    """Planner-filled day-of-show checklist -- pure BigQuery persistence,
+    NO Parallel/Gemini call anywhere in this route (distinct from every
+    other on-demand route in this file: a manual input record, not an AI
+    synthesis). Same latest-row-by-generated_at shape as /stop_outcomes."""
+    campaign_id = request.args.get("campaign_id")
+    city_id = request.args.get("city_id")
+    if not campaign_id or not city_id:
+        return jsonify({"error": "missing required query param(s): campaign_id, city_id"}), 400
+    rows = _query(
+        f"SELECT campaign_id, city_id, generated_at, showstop_manager_assigned, "
+        f"showstop_manager_name, capacity_confirmed FROM `{_DATASET}.stop_safety_checklist` "
+        f"WHERE campaign_id = @campaign_id AND city_id = @city_id ORDER BY generated_at DESC LIMIT 1",
+        [
+            bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id),
+            bigquery.ScalarQueryParameter("city_id", "STRING", city_id),
+        ],
+    )
+    if not rows:
+        return jsonify({
+            "campaign_id": campaign_id, "city_id": city_id, "generated_at": None,
+            "showstop_manager_assigned": None, "showstop_manager_name": None,
+            "capacity_confirmed": None,
+        })
+    r = rows[0]
+    return jsonify({
+        "campaign_id": r["campaign_id"],
+        "city_id": r["city_id"],
+        "generated_at": r["generated_at"].isoformat() if r["generated_at"] else None,
+        "showstop_manager_assigned": r["showstop_manager_assigned"],
+        "showstop_manager_name": r["showstop_manager_name"],
+        "capacity_confirmed": r["capacity_confirmed"],
+    })
+
+
+@app.post("/stop_safety_checklist")
+def insert_stop_safety_checklist():
+    payload = request.get_json(silent=True) or {}
+    if not payload.get("campaign_id") or not payload.get("city_id"):
+        return jsonify({"error": "missing required field(s): campaign_id, city_id"}), 400
+    row = {
+        "campaign_id": payload["campaign_id"],
+        "city_id": payload["city_id"],
+        "generated_at": payload.get("generated_at") or datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "showstop_manager_assigned": bool(payload.get("showstop_manager_assigned", False)),
+        "showstop_manager_name": payload.get("showstop_manager_name"),
+        "capacity_confirmed": bool(payload.get("capacity_confirmed", False)),
+    }
+    errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.stop_safety_checklist", [row])
     if errors:
         return jsonify({"error": "insert failed", "details": errors}), 500
     return jsonify({"campaign_id": row["campaign_id"], "city_id": row["city_id"], "status": "inserted"})

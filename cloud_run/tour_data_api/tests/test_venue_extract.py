@@ -37,6 +37,7 @@ def _default_synthesis(prompt=None, schema=None):
         "typical_event_format": "indoor arena show",
         "logistics_notes": "Standard load-in via rear dock.",
         "technical_rider_notes": "Stage: 40x30ft. 400A power available. Rear loading dock, no forklift on site.",
+        "customs_notes": "France requires an ATA Carnet for temporary import of touring equipment.",
         "nearest_airport": {"name": "Heathrow", "distance_or_travel_time": "~45 min by car"},
         "nearest_railway_station": {"name": "Wembley Central", "distance_or_travel_time": "10 min walk"},
         "confidence": "medium",
@@ -66,7 +67,7 @@ def test_extracts_and_synthesizes(client, mock_parallel_client, monkeypatch):
     monkeypatch.setattr(main, "_call_gemini_json", _default_synthesis)
 
     res = client.post("/extract_venue_info", json={
-        "urls": ["https://example.com/venue"], "city_name": "London",
+        "urls": ["https://example.com/venue"], "city_name": "London", "country": "France",
     })
 
     assert res.status_code == 200
@@ -76,7 +77,8 @@ def test_extracts_and_synthesizes(client, mock_parallel_client, monkeypatch):
     assert body["nearest_airport"]["name"] == "Heathrow"
     assert body["nearest_railway_station"]["name"] == "Wembley Central"
     assert "40x30ft" in body["technical_rider_notes"]
-    assert len(body["citations"]) == 2
+    assert "ATA Carnet" in body["customs_notes"]
+    assert len(body["citations"]) == 3
 
 
 def test_commute_search_failure_degrades_gracefully(client, mock_parallel_client, monkeypatch):

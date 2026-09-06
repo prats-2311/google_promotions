@@ -174,6 +174,44 @@ paths:
         "500":
           description: Parallel Search or Gemini synthesis call failed.
 
+  /seasonal_weather_risk:
+    post:
+      operationId: seasonalWeatherRisk
+      summary: >
+        Per-city, per-month seasonal weather risk fact for touring/large
+        outdoor events (monsoon, hurricane/cyclone season, extreme heat) --
+        real Parallel Search, purely on-demand, no curated seed data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [city_name, month_or_date]
+              properties:
+                city_name: { type: string }
+                country: { type: string }
+                month_or_date: { type: string }
+      responses:
+        "200":
+          description: Grounded seasonal risk assessment (possibly low-confidence if thin).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  risk_level: { type: string, enum: [high, medium, low], nullable: true }
+                  notes: { type: string, nullable: true }
+                  confidence: { type: string, enum: [high, medium, low] }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+
   /campaign_strategy_chat:
     post:
       operationId: campaignStrategyChat
@@ -417,6 +455,46 @@ paths:
                         url: { type: string }
                         title: { type: string, nullable: true }
 
+  /visa_requirements:
+    post:
+      operationId: visaRequirements
+      summary: >
+        Visa/border timing risk: real Parallel Search for the visa category
+        and typical processing lead time a touring artist of a given
+        nationality needs for a destination country -- purely on-demand, no
+        curated seed data. The stop_date-vs-lead-time comparison is left to
+        the caller; this route only returns the grounded fact.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [artist_nationality, destination_country]
+              properties:
+                artist_nationality: { type: string }
+                destination_country: { type: string }
+      responses:
+        "200":
+          description: Grounded visa category and lead time (possibly low-confidence if thin).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  visa_type: { type: string, nullable: true }
+                  typical_lead_time_weeks: { type: integer, nullable: true }
+                  notes: { type: string, nullable: true }
+                  confidence: { type: string, enum: [high, medium, low] }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+
   /extract_venue_info:
     post:
       operationId: extractVenueInfo
@@ -441,6 +519,7 @@ paths:
                 urls: { type: array, items: { type: string } }
                 city_name: { type: string }
                 venue_name: { type: string }
+                country: { type: string }
                 objective: { type: string }
       responses:
         "200":
@@ -455,6 +534,7 @@ paths:
                   typical_event_format: { type: string, nullable: true }
                   logistics_notes: { type: string, nullable: true }
                   technical_rider_notes: { type: string, nullable: true }
+                  customs_notes: { type: string, nullable: true }
                   nearest_airport:
                     type: object
                     nullable: true
@@ -1240,6 +1320,67 @@ paths:
                 city_id: { type: string }
                 generated_at: { type: string, nullable: true }
                 outcome_json: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Insert confirmation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  city_id: { type: string }
+                  status: { type: string }
+
+  /stop_safety_checklist:
+    get:
+      operationId: getStopSafetyChecklist
+      summary: >
+        The latest planner-filled day-of-show safety/capacity checklist for
+        one campaign/city stop, if one has been saved. Pure BigQuery
+        persistence -- no Parallel/Gemini call, a manual input record.
+      parameters:
+        - name: campaign_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: city_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest checklist row, or nulls if none saved yet.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaign_id: { type: string }
+                  city_id: { type: string }
+                  generated_at: { type: string, nullable: true }
+                  showstop_manager_assigned: { type: boolean, nullable: true }
+                  showstop_manager_name: { type: string, nullable: true }
+                  capacity_confirmed: { type: boolean, nullable: true }
+    post:
+      operationId: insertStopSafetyChecklist
+      summary: Persists one planner-filled safety/capacity checklist entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaign_id, city_id]
+              properties:
+                campaign_id: { type: string }
+                city_id: { type: string }
+                generated_at: { type: string, nullable: true }
+                showstop_manager_assigned: { type: boolean }
+                showstop_manager_name: { type: string, nullable: true }
+                capacity_confirmed: { type: boolean }
       responses:
         "200":
           description: Insert confirmation.

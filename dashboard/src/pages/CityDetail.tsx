@@ -28,6 +28,9 @@ import {
   Loader2,
   Newspaper,
   Search,
+  Stamp,
+  CloudRain,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { StatMeter } from "../components/ui/StatMeter";
@@ -39,6 +42,7 @@ import { Tabs } from "../components/ui/Tabs";
 import { deriveTrace } from "../lib/deriveTrace";
 import { useCampaignContext } from "../lib/campaignContext";
 import { CityDetailSkeleton } from "../components/ui/Skeletons";
+import { CardErrorBoundary } from "../components/CardErrorBoundary";
 import { Accordion } from "../components/ui/Accordion";
 import { CueCard } from "../components/ui/CueCard";
 import { AudioPlayButton } from "../components/ui/AudioPlayButton";
@@ -50,8 +54,19 @@ import {
   getStopOutcome,
   saveStopOutcome,
   getLocalCrewVendors,
+  getVisaRequirements,
+  getSeasonalWeatherRisk,
+  getStopSafetyChecklist,
+  saveStopSafetyChecklist,
 } from "../lib/api";
-import type { MonitorEvent, StopOutcome, VenueNotes, LocalCrewVendorsResponse } from "../lib/types";
+import type {
+  MonitorEvent,
+  StopOutcome,
+  VenueNotes,
+  LocalCrewVendorsResponse,
+  VisaRequirements,
+  SeasonalWeatherRisk,
+} from "../lib/types";
 
 const DRIFT_POLL_MS = 8000;
 // Real observed trigger-to-result latency is ~60-90s (Parallel actually
@@ -399,6 +414,262 @@ function LocalCrewVendorsCard({ cityName, accent }: { cityName: string; accent: 
   );
 }
 
+// Visa/border timing risk: 2026 reporting shows O-1/P-1 touring-artist
+// visas averaging 6-12 months processing -- genuinely computable against a
+// stop_date, unlike most "logistics" facts. Nationality/destination are
+// manual inputs since neither exists anywhere in the campaign schema today.
+function VisaRequirementsCard({ accent }: { accent: string }) {
+  const [nationality, setNationality] = useState("");
+  const [destination, setDestination] = useState("");
+  const [result, setResult] = useState<VisaRequirements | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleCheck() {
+    if (!nationality.trim() || !destination.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      setResult(await getVisaRequirements(nationality.trim(), destination.trim()));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-paper p-6">
+      <SectionLabel icon={Stamp} accent={accent} label="Visa & Border Timing" />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <input
+          value={nationality}
+          onChange={(e) => setNationality(e.target.value)}
+          placeholder="Artist nationality (e.g. Canadian)"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
+        />
+        <input
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          placeholder="Destination country"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
+        />
+        <button
+          type="button"
+          onClick={handleCheck}
+          disabled={loading || !nationality.trim() || !destination.trim()}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          {loading ? "Checking…" : "Check"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check: {error}</p>}
+
+      {result && (
+        <div className="mt-3">
+          <p className="font-sans text-[13px] text-ink">
+            {result.visa_type ?? "No specific visa category found"}
+            {result.typical_lead_time_weeks != null &&
+              ` — ~${result.typical_lead_time_weeks} weeks typical lead time`}
+          </p>
+          {result.notes && (
+            <p className="mt-1 font-sans text-[12.5px] leading-relaxed text-ink-muted">{result.notes}</p>
+          )}
+          {result.citations.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {result.citations.map((c, i) => (
+                <a
+                  key={i}
+                  href={c.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-sans text-[11px] text-ink-muted underline hover:text-ink"
+                >
+                  {c.title || c.url}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SeasonalWeatherRiskCard({ cityName, accent }: { cityName: string; accent: string }) {
+  const [monthOrDate, setMonthOrDate] = useState("");
+  const [result, setResult] = useState<SeasonalWeatherRisk | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleCheck() {
+    if (!monthOrDate.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      setResult(await getSeasonalWeatherRisk(cityName, monthOrDate.trim()));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const riskClass =
+    result?.risk_level === "high"
+      ? "text-red-700"
+      : result?.risk_level === "medium"
+        ? "text-amber-700"
+        : "text-emerald-700";
+
+  return (
+    <div className="rounded-2xl bg-paper p-6">
+      <SectionLabel icon={CloudRain} accent={accent} label="Seasonal Weather Risk" />
+      <div className="mt-3 flex gap-2">
+        <input
+          value={monthOrDate}
+          onChange={(e) => setMonthOrDate(e.target.value)}
+          placeholder="Month or date (e.g. October)"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
+        />
+        <button
+          type="button"
+          onClick={handleCheck}
+          disabled={loading || !monthOrDate.trim()}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          {loading ? "Checking…" : "Check"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check: {error}</p>}
+
+      {result && (
+        <div className="mt-3">
+          {result.risk_level && (
+            <p className={`font-sans text-[12px] font-medium uppercase tracking-[0.06em] ${riskClass}`}>
+              {result.risk_level} risk{result.confidence ? ` · ${result.confidence} confidence` : ""}
+            </p>
+          )}
+          <p className="mt-1 font-sans text-[13px] leading-relaxed text-ink">
+            {result.notes ?? "No specific seasonal risk found for this window."}
+          </p>
+          {result.citations.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {result.citations.map((c, i) => (
+                <a
+                  key={i}
+                  href={c.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-sans text-[11px] text-ink-muted underline hover:text-ink"
+                >
+                  {c.title || c.url}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The real industry fix for crowd-crush disasters (the Showstop Procedure)
+// is a named person with explicit authority, not a data problem -- this
+// card is deliberately NOT AI-generated, a planner-filled checklist,
+// matching the project's own "never fabricate a fact" discipline.
+function StopSafetyChecklistCard({
+  campaignId,
+  cityId,
+  accent,
+}: {
+  campaignId: string;
+  cityId: string;
+  accent: string;
+}) {
+  const { data: saved } = useQuery({
+    queryKey: ["stopSafetyChecklist", campaignId, cityId],
+    queryFn: () => getStopSafetyChecklist(campaignId, cityId),
+  });
+
+  const [assigned, setAssigned] = useState(false);
+  const [managerName, setManagerName] = useState("");
+  const [capacityConfirmed, setCapacityConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!saved) return;
+    setAssigned(Boolean(saved.showstop_manager_assigned));
+    setManagerName(saved.showstop_manager_name ?? "");
+    setCapacityConfirmed(Boolean(saved.capacity_confirmed));
+    setSavedAt(saved.generated_at);
+  }, [saved]);
+
+  async function handleSave() {
+    setError(null);
+    setSaving(true);
+    try {
+      await saveStopSafetyChecklist(campaignId, cityId, {
+        showstop_manager_assigned: assigned,
+        showstop_manager_name: managerName.trim() || null,
+        capacity_confirmed: capacityConfirmed,
+      });
+      setSavedAt(new Date().toISOString());
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl bg-paper p-6">
+      <SectionLabel icon={ClipboardCheck} accent={accent} label="Safety Checklist" />
+      <div className="mt-3 space-y-2.5">
+        <label className="flex items-center gap-2 font-sans text-[13px] text-ink">
+          <input type="checkbox" checked={assigned} onChange={(e) => setAssigned(e.target.checked)} />
+          Showstop manager assigned
+        </label>
+        <input
+          value={managerName}
+          onChange={(e) => setManagerName(e.target.value)}
+          placeholder="Manager name"
+          className="w-full rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
+        />
+        <label className="flex items-center gap-2 font-sans text-[13px] text-ink">
+          <input
+            type="checkbox"
+            checked={capacityConfirmed}
+            onChange={(e) => setCapacityConfirmed(e.target.checked)}
+          />
+          Venue capacity confirmed with venue
+        </label>
+      </div>
+
+      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't save: {error}</p>}
+
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saving}
+        className="mt-3 flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+        {saving ? "Saving…" : "Save checklist"}
+      </button>
+      {savedAt && !saving && (
+        <p className="mt-2 font-sans text-[11px] text-ink-muted">Last saved {new Date(savedAt).toLocaleString()}</p>
+      )}
+    </div>
+  );
+}
+
 const TRACE_ICON_BY_KIND: Record<TraceStep["kind"], React.ReactNode> = {
   tool: <Wrench className="w-3.5 h-3.5" />,
   playbook: <GitBranch className="w-3.5 h-3.5" />,
@@ -535,33 +806,60 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
           {cultureNotes.humor_boundaries}
         </p>
       </div>
-      {demographicSnapshot && <KeyMetricsCard snapshot={demographicSnapshot} accent={accent} />}
-      {venueNotes && <VenueNotesCard notes={venueNotes} accent={accent} />}
-      <LocalCrewVendorsCard cityName={stop.city_name} accent={accent} />
+      {demographicSnapshot && (
+        <CardErrorBoundary>
+          <KeyMetricsCard snapshot={demographicSnapshot} accent={accent} />
+        </CardErrorBoundary>
+      )}
+      {venueNotes && (
+        <CardErrorBoundary>
+          <VenueNotesCard notes={venueNotes} accent={accent} />
+        </CardErrorBoundary>
+      )}
+      <CardErrorBoundary>
+        <LocalCrewVendorsCard cityName={stop.city_name} accent={accent} />
+      </CardErrorBoundary>
       <div className="lg:col-span-2">
-        <CulturalDriftCheck campaignId={campaign.campaign_id} cityId={stop.city_id} cityName={stop.city_name} accent={accent} />
+        <CardErrorBoundary>
+          <CulturalDriftCheck campaignId={campaign.campaign_id} cityId={stop.city_id} cityName={stop.city_name} accent={accent} />
+        </CardErrorBoundary>
       </div>
       <div className="lg:col-span-2">
-        <CulturalDriftCheck
-          campaignId={campaign.campaign_id}
-          cityId={stop.city_id}
-          cityName={stop.city_name}
-          accent={accent}
-          monitorType="safety"
-          label="Safety & Logistics Check"
-          icon={ShieldAlert}
-          noDriftMessage={`Checked just now — no notable safety or logistics concerns found for ${stop.city_name}.`}
-        />
+        <CardErrorBoundary>
+          <CulturalDriftCheck
+            campaignId={campaign.campaign_id}
+            cityId={stop.city_id}
+            cityName={stop.city_name}
+            accent={accent}
+            monitorType="safety"
+            label="Safety & Logistics Check"
+            icon={ShieldAlert}
+            noDriftMessage={`Checked just now — no notable safety or logistics concerns found for ${stop.city_name}.`}
+          />
+        </CardErrorBoundary>
       </div>
       <div className="lg:col-span-2">
-        <StopOutcomeCheck
-          campaignId={campaign.campaign_id}
-          cityId={stop.city_id}
-          cityName={stop.city_name}
-          campaignTitle={campaign.title}
-          stopDate={stop.stop_date}
-          accent={accent}
-        />
+        <CardErrorBoundary>
+          <StopOutcomeCheck
+            campaignId={campaign.campaign_id}
+            cityId={stop.city_id}
+            cityName={stop.city_name}
+            campaignTitle={campaign.title}
+            stopDate={stop.stop_date}
+            accent={accent}
+          />
+        </CardErrorBoundary>
+      </div>
+      <CardErrorBoundary>
+        <VisaRequirementsCard accent={accent} />
+      </CardErrorBoundary>
+      <CardErrorBoundary>
+        <SeasonalWeatherRiskCard cityName={stop.city_name} accent={accent} />
+      </CardErrorBoundary>
+      <div className="lg:col-span-2">
+        <CardErrorBoundary>
+          <StopSafetyChecklistCard campaignId={campaign.campaign_id} cityId={stop.city_id} accent={accent} />
+        </CardErrorBoundary>
       </div>
     </div>
   );
@@ -676,6 +974,14 @@ function VenueNotesCard({ notes, accent }: { notes: VenueNotes; accent: string }
             Technical Rider
           </p>
           <p className="font-sans text-[13px] leading-relaxed text-ink-muted">{notes.technical_rider_notes}</p>
+        </div>
+      )}
+      {notes.customs_notes && (
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Customs & Import
+          </p>
+          <p className="font-sans text-[13px] leading-relaxed text-ink-muted">{notes.customs_notes}</p>
         </div>
       )}
       {(notes.nearest_airport || notes.nearest_railway_station) && (
