@@ -368,26 +368,79 @@ paths:
         "500":
           description: Parallel Search or Gemini synthesis call failed.
 
-  /extract_venue_info:
+  /discover_venues:
     post:
-      operationId: extractVenueInfo
+      operationId: discoverVenues
       summary: >
-        Stop-specific logistics via Parallel's Extract API, pointed at a
-        specific venue/promoter URL the campaign creator provides -- distinct
-        from getCultureNotes, which is city-level and never this granular.
-        Extract pulls structured content from the given URL(s) directly
-        rather than running a fresh web search, so this is only as good as
-        the URL supplied. Called directly from the orchestration driver, not
-        through a conversational playbook turn.
+        Venue discovery: instead of requiring the campaign creator to
+        already have a specific venue URL in hand, runs a real Parallel
+        Search for actual candidate venues (arenas, stadiums, theaters) in
+        a city and returns a real, cited shortlist to pick from -- never a
+        fabricated venue, only ones the search excerpts actually name.
+        /extract_venue_info is the deep-dive once one is chosen.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [urls]
+              required: [city_name]
+              properties:
+                city_name: { type: string }
+                country: { type: string }
+                capacity_hint: { type: string }
+                format_hint: { type: string }
+      responses:
+        "200":
+          description: A real, cited shortlist of candidate venues (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  venues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        venue_type: { type: string }
+                        approx_capacity: { type: string, nullable: true }
+                        source_url: { type: string }
+                        note: { type: string, nullable: true }
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url: { type: string }
+                        title: { type: string, nullable: true }
+
+  /extract_venue_info:
+    post:
+      operationId: extractVenueInfo
+      summary: >
+        Stop-specific logistics: real Parallel Extract against a specific
+        venue/promoter URL the campaign creator provides (capacity, format,
+        logistics notes -- distinct from getCultureNotes, which is
+        city-level and never this granular), plus a second, real Parallel
+        Search for the nearest major airport and nearest railway/train
+        station for crew and talent commute planning. A failed commute
+        search degrades to null commute fields rather than blocking the
+        capacity extraction. Called directly from the orchestration driver,
+        not through a conversational playbook turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [urls, city_name]
               properties:
                 urls: { type: array, items: { type: string } }
+                city_name: { type: string }
+                venue_name: { type: string }
                 objective: { type: string }
       responses:
         "200":
@@ -401,6 +454,18 @@ paths:
                   capacity: { type: string, nullable: true }
                   typical_event_format: { type: string, nullable: true }
                   logistics_notes: { type: string, nullable: true }
+                  nearest_airport:
+                    type: object
+                    nullable: true
+                    properties:
+                      name: { type: string }
+                      distance_or_travel_time: { type: string }
+                  nearest_railway_station:
+                    type: object
+                    nullable: true
+                    properties:
+                      name: { type: string }
+                      distance_or_travel_time: { type: string }
                   confidence: { type: string, enum: [high, medium, low] }
                   citations:
                     type: array

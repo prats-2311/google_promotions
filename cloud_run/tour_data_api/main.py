@@ -128,6 +128,21 @@ def _validate_place_name(name: str, field_name: str) -> str:
     return stripped
 
 
+def _validate_venue_name(name: str) -> str:
+    """Same injection-surface reasoning as _validate_place_name, but venue
+    names routinely include digits (O2 Arena, 3Arena) that a place name
+    never would -- isalnum() instead of isalpha(), same length/charset
+    discipline otherwise."""
+    stripped = name.strip()
+    if not stripped:
+        raise PlaceNameValidationError("venue_name must not be empty")
+    if len(stripped) > _PLACE_NAME_MAX_LENGTH:
+        raise PlaceNameValidationError(f"venue_name must be {_PLACE_NAME_MAX_LENGTH} characters or fewer")
+    if not all(ch.isalnum() or ch in _PLACE_NAME_ALLOWED_EXTRA_CHARS for ch in stripped):
+        raise PlaceNameValidationError("venue_name contains characters that aren't allowed in a venue name")
+    return stripped
+
+
 def _parallel_search(city_name: str, country: str | None) -> list[dict]:
     if not _parallel_client:
         raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
@@ -862,18 +877,160 @@ def live_city_demographics_search():
     })
 
 
+def _venue_discovery_search(
+    city_name: str, country: str | None, capacity_hint: str | None, format_hint: str | None
+) -> list[dict]:
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    place = f"{city_name}, {country}" if country else city_name
+    format_clause = f" suitable for {format_hint}" if format_hint else ""
+    capacity_clause = f" with capacity around {capacity_hint}" if capacity_hint else ""
+    search = _parallel_client.search(
+        objective=(
+            f"Real concert venues, arenas, stadiums, or theaters in {place}{format_clause}"
+            f"{capacity_clause}, suitable for a touring musician or actor's live event."
+        ),
+        search_queries=[
+            f"{place} major concert venues",
+            f"{place} arenas stadiums capacity",
+            f"{place} theaters live events",
+        ],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+_VENUE_DISCOVERY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "venues": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "name": {"type": "STRING"},
+                    "venue_type": {"type": "STRING"},
+                    "approx_capacity": {"type": "STRING", "nullable": True},
+                    "source_url": {"type": "STRING"},
+                    "note": {"type": "STRING", "nullable": True},
+                },
+                "required": ["name", "venue_type", "approx_capacity", "source_url", "note"],
+            },
+        },
+    },
+    "required": ["venues"],
+}
+
+
+@app.post("/discover_venues")
+def discover_venues():
+    """Venue discovery: instead of requiring the campaign creator to already
+    have a specific venue URL in hand, run a real Parallel Search for actual
+    candidate venues in this city and return a real, cited shortlist to pick
+    from -- never a fabricated venue, only ones the search excerpts actually
+    name. /extract_venue_info is the deep-dive once one is chosen."""
+    payload = request.get_json(silent=True) or {}
+    city_name = payload.get("city_name")
+    if not city_name:
+        return jsonify({"error": "missing required field: city_name"}), 400
+    country = payload.get("country")
+    capacity_hint = payload.get("capacity_hint")
+    format_hint = payload.get("format_hint")
+
+    try:
+        city_name = _validate_place_name(city_name, "city_name")
+        if country:
+            country = _validate_place_name(country, "country")
+    except PlaceNameValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        results = _venue_discovery_search(city_name, country, capacity_hint, format_hint)
+    except parallel.APIError as e:
+        return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    if not results:
+        return jsonify({"source": "parallel_live", "venues": [], "citations": []})
+
+    excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in results[:8]
+    )
+    prompt = (
+        f"Using ONLY the search excerpts below, list real, distinct venues (arenas, stadiums, theaters) "
+        f"actually mentioned as being in or near {city_name} that could host a touring musician or actor's "
+        f"live event. For each: name, venue_type (e.g. 'indoor arena', 'stadium', 'theater'), "
+        f"approx_capacity (null if not stated), source_url (the exact URL it was mentioned in), and a "
+        f"one-sentence note. Never invent a venue not actually named in the excerpts. Return at most 5, "
+        f"most relevant first. Return an empty venues array if nothing concrete is found.\n\n"
+        f"SEARCH EXCERPTS:\n{excerpt_block}"
+    )
+    try:
+        synthesized = _call_gemini_json(prompt, _VENUE_DISCOVERY_SCHEMA)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
+
+    return jsonify({
+        "source": "parallel_live",
+        "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        **synthesized,
+    })
+
+
+def _venue_commute_search(city_name: str, venue_name: str | None) -> list[dict]:
+    place = f"{venue_name}, {city_name}" if venue_name else city_name
+    search = _parallel_client.search(
+        objective=(
+            f"The nearest major airport and the nearest railway or train station to {place}, "
+            f"with approximate distance or travel time, for touring crew and talent logistics planning."
+        ),
+        search_queries=[f"{place} nearest airport", f"{place} nearest railway station"],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+_VENUE_COMMUTE_FIELDS = {
+    "type": "OBJECT",
+    "nullable": True,
+    "properties": {
+        "name": {"type": "STRING"},
+        "distance_or_travel_time": {"type": "STRING"},
+    },
+    "required": ["name", "distance_or_travel_time"],
+}
+
+
 @app.post("/extract_venue_info")
 def extract_venue_info():
-    """Stop-specific logistics via Parallel's Extract API, pointed at a
-    specific venue/promoter URL the campaign creator provides -- distinct
-    from getCultureNotes, which is city-level and never that granular.
-    Extract pulls structured content from the given URL(s) directly rather
-    than running a fresh web search, so this is only as good as the URL
-    supplied."""
+    """Stop-specific logistics: real Parallel Extract against a specific
+    venue/promoter URL the campaign creator provides (capacity, format,
+    logistics notes -- distinct from getCultureNotes, which is city-level
+    and never this granular), plus a second, real Parallel Search for the
+    nearest major airport and nearest railway/train station -- crew and
+    talent commute planning that no single venue page reliably states.
+    Both feed one Gemini synthesis. A failed commute search degrades to
+    null commute fields rather than blocking the (already-working) capacity
+    extraction -- same graceful-degradation discipline used elsewhere for
+    nice-to-have enrichment."""
     payload = request.get_json(silent=True) or {}
     urls = payload.get("urls") or []
     if not urls:
         return jsonify({"error": "missing required field: urls (non-empty array)"}), 400
+    city_name = payload.get("city_name")
+    if not city_name:
+        return jsonify({"error": "missing required field: city_name"}), 400
+    venue_name = payload.get("venue_name")
+
+    try:
+        city_name = _validate_place_name(city_name, "city_name")
+        if venue_name:
+            venue_name = _validate_venue_name(venue_name)
+    except PlaceNameValidationError as e:
+        return jsonify({"error": str(e)}), 400
+
     if not _parallel_client:
         return jsonify({"error": "PARALLEL_API_KEY is not configured on this service"}), 500
 
@@ -887,9 +1044,19 @@ def extract_venue_info():
         return jsonify({"error": f"Parallel Extract API call failed: {e}"}), 502
 
     results = extracted.results or []
+
+    try:
+        commute_results = _venue_commute_search(city_name, venue_name)
+    except parallel.APIError:
+        commute_results = []
+
     excerpt_block = "\n\n".join(
         f"Source: {r.title or r.url}\nURL: {r.url}\n" + "\n".join(r.excerpts or [])
         for r in results[:8]
+    )
+    commute_excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in commute_results[:5]
     )
     schema = {
         "type": "OBJECT",
@@ -897,25 +1064,35 @@ def extract_venue_info():
             "capacity": {"type": "STRING", "nullable": True},
             "typical_event_format": {"type": "STRING", "nullable": True},
             "logistics_notes": {"type": "STRING", "nullable": True},
+            "nearest_airport": _VENUE_COMMUTE_FIELDS,
+            "nearest_railway_station": _VENUE_COMMUTE_FIELDS,
             "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
         },
-        "required": ["capacity", "typical_event_format", "logistics_notes", "confidence"],
+        "required": [
+            "capacity", "typical_event_format", "logistics_notes",
+            "nearest_airport", "nearest_railway_station", "confidence",
+        ],
     }
     prompt = (
-        "Using ONLY the extracted page content below, summarize venue capacity, typical event "
-        "format, and any logistics/etiquette notes relevant to a touring musician or actor. Use "
-        "null for anything the content doesn't actually support -- never guess a number. Set "
-        "confidence to \"low\" if the content is thin or ambiguous.\n\n"
-        f"EXTRACTED CONTENT:\n{excerpt_block}"
+        "Using ONLY the content below, summarize venue capacity, typical event format, and any "
+        "logistics/etiquette notes relevant to a touring musician or actor, plus the nearest major "
+        "airport and nearest railway/train station for touring crew and talent logistics. Use null "
+        "for anything the content doesn't actually support -- never guess a number, distance, or "
+        "travel time. Set confidence to \"low\" if the content is thin or ambiguous.\n\n"
+        f"EXTRACTED VENUE PAGE CONTENT:\n{excerpt_block}\n\n"
+        f"COMMUTE SEARCH RESULTS:\n{commute_excerpt_block}"
     )
     try:
         synthesized = _call_gemini_json(prompt, schema)
     except (requests.HTTPError, KeyError, ValueError) as e:
         return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
 
+    citations = [{"url": r.url, "title": r.title} for r in results[:8]]
+    citations += [{"url": r.get("url"), "title": r.get("title")} for r in commute_results[:5]]
+
     return jsonify({
         "source": "parallel_extract",
-        "citations": [{"url": r.url, "title": r.title} for r in results[:8]],
+        "citations": citations,
         **synthesized,
     })
 

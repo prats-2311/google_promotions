@@ -144,13 +144,34 @@ export interface StopOutcome {
   notice?: string;
 }
 
+export interface VenueCommutePoint {
+  name: string;
+  distance_or_travel_time: string;
+}
+
 export interface VenueNotes {
   source: string;
   citations: MonitorCitation[];
   capacity: string | null;
   typical_event_format: string | null;
   logistics_notes: string | null;
+  nearest_airport: VenueCommutePoint | null;
+  nearest_railway_station: VenueCommutePoint | null;
   confidence: "high" | "medium" | "low";
+}
+
+export interface DiscoveredVenue {
+  name: string;
+  venue_type: string;
+  approx_capacity: string | null;
+  source_url: string;
+  note: string | null;
+}
+
+export interface VenueDiscoveryResponse {
+  source: string;
+  venues: DiscoveredVenue[];
+  citations: MonitorCitation[];
 }
 
 export interface City {

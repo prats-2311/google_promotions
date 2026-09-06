@@ -21,6 +21,8 @@ import {
   MessageCircle,
   BarChart3,
   Building2,
+  Plane,
+  TrainFront,
   RadioTower,
   RefreshCw,
   Loader2,
@@ -579,6 +581,32 @@ function VenueNotesCard({ notes, accent }: { notes: VenueNotes; accent: string }
       </div>
       {notes.logistics_notes && (
         <p className="mt-3 font-sans text-[13px] leading-relaxed text-ink-muted">{notes.logistics_notes}</p>
+      )}
+      {(notes.nearest_airport || notes.nearest_railway_station) && (
+        <div className="mt-4 grid grid-cols-1 gap-3 border-t border-line pt-3 sm:grid-cols-2">
+          {notes.nearest_airport && (
+            <div className="flex items-start gap-2">
+              <Plane size={14} className="mt-0.5 shrink-0 text-ink-muted" />
+              <div>
+                <p className="font-sans text-[12.5px] text-ink">{notes.nearest_airport.name}</p>
+                <p className="font-sans text-[11px] text-ink-muted">
+                  {notes.nearest_airport.distance_or_travel_time}
+                </p>
+              </div>
+            </div>
+          )}
+          {notes.nearest_railway_station && (
+            <div className="flex items-start gap-2">
+              <TrainFront size={14} className="mt-0.5 shrink-0 text-ink-muted" />
+              <div>
+                <p className="font-sans text-[12.5px] text-ink">{notes.nearest_railway_station.name}</p>
+                <p className="font-sans text-[11px] text-ink-muted">
+                  {notes.nearest_railway_station.distance_or_travel_time}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       )}
       {notes.citations.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

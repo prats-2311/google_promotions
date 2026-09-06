@@ -306,9 +306,10 @@ def _generate_style_moodboard(city_id: str, city_name: str, style_notes: str, id
         return None
 
 
-def _fetch_venue_notes(venue_url: str, identity_token: str) -> str | None:
+def _fetch_venue_notes(venue_url: str, city_name: str, identity_token: str) -> str | None:
     """Stop-specific logistics via Parallel's Extract API, pointed at the
-    venue/promoter URL the campaign creator supplied for this stop -- a
+    venue/promoter URL the campaign creator supplied for this stop -- plus
+    real nearest-airport/nearest-railway-station commute data. A
     nice-to-have on top of the core brief, never allowed to block it. A
     failure here (bad URL, extraction turning up nothing) degrades
     gracefully: the brief still finalizes without venue notes, same shape
@@ -318,7 +319,7 @@ def _fetch_venue_notes(venue_url: str, identity_token: str) -> str | None:
         resp = requests.post(
             f"{TOUR_DATA_API}/extract_venue_info",
             headers={"Authorization": f"Bearer {identity_token}"},
-            json={"urls": [venue_url]},
+            json={"urls": [venue_url], "city_name": city_name},
             timeout=60,
         )
         resp.raise_for_status()
@@ -658,7 +659,7 @@ def run_city(
         _generate_style_moodboard(city_id, city_name, style_notes, tour_data_token) if style_notes else None
     )
 
-    venue_notes_json = _fetch_venue_notes(venue_url, tour_data_token) if venue_url else None
+    venue_notes_json = _fetch_venue_notes(venue_url, city_name, tour_data_token) if venue_url else None
 
     insert_payload = {
         "brief_id": brief_id,

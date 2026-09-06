@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check, Loader2, TrendingUp } from "lucide-react";
-import { createCampaign, getGenreRecommendations, listCities } from "../lib/api";
+import { ArrowLeft, Check, Loader2, Search, TrendingUp } from "lucide-react";
+import { createCampaign, discoverVenues, getGenreRecommendations, listCities } from "../lib/api";
 import { useCampaignContext } from "../lib/campaignContext";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StrategyChat } from "../components/ui/StrategyChat";
-import type { SuggestedCampaign } from "../lib/types";
+import type { DiscoveredVenue, SuggestedCampaign } from "../lib/types";
 
 const GENRE_DEBOUNCE_MS = 500;
 
@@ -88,6 +88,116 @@ function formatStopDate(iso: string): string {
 }
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10);
+
+// Venue discovery: rather than requiring the campaign creator to already
+// have a specific venue URL in hand, a real Parallel Search surfaces actual
+// candidate venues for this city to pick from. Manual URL paste stays as a
+// fallback for a venue that doesn't turn up in search.
+function VenueField({
+  cityName,
+  country,
+  venueUrl,
+  onChange,
+}: {
+  cityName: string;
+  country: string | null;
+  venueUrl: string;
+  onChange: (url: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [venues, setVenues] = useState<DiscoveredVenue[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pickedName, setPickedName] = useState<string | null>(null);
+
+  async function handleFind() {
+    setOpen(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await discoverVenues(cityName, country);
+      setVenues(res.venues);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function pick(venue: DiscoveredVenue) {
+    onChange(venue.source_url);
+    setPickedName(venue.name);
+    setOpen(false);
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="url"
+          value={venueUrl}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setPickedName(null);
+          }}
+          placeholder="Venue or promoter URL (optional) — pulls capacity, logistics & commute notes"
+          className="w-full rounded-md border border-line bg-paper-raised px-2 py-1.5 font-sans text-[12px] text-ink outline-none placeholder:text-ink-muted/70 focus:border-ink/30"
+        />
+        <button
+          type="button"
+          onClick={handleFind}
+          disabled={loading}
+          className="flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1.5 font-sans text-[11.5px] text-ink-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          Find venues
+        </button>
+      </div>
+
+      {pickedName && (
+        <p className="mt-1 font-sans text-[11px] text-ink-muted">Selected: {pickedName}</p>
+      )}
+      {error && <p className="mt-1 font-sans text-[11px] text-red-800">Couldn't find venues: {error}</p>}
+
+      {open && (
+        <div className="mt-2 max-h-52 overflow-y-auto rounded-md border border-line bg-paper-raised p-1.5">
+          {loading && (
+            <p className="px-2 py-1.5 font-sans text-[11.5px] text-ink-muted">
+              Searching real venues in {cityName}…
+            </p>
+          )}
+          {!loading && venues?.length === 0 && (
+            <p className="px-2 py-1.5 font-sans text-[11.5px] text-ink-muted">
+              No venues found — try pasting a URL directly.
+            </p>
+          )}
+          {!loading &&
+            venues?.map((v, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => pick(v)}
+                className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-black/[0.03]"
+              >
+                <span className="block font-sans text-[12px] text-ink">{v.name}</span>
+                <span className="block font-sans text-[10.5px] text-ink-muted">
+                  {v.venue_type}
+                  {v.approx_capacity ? ` · ${v.approx_capacity}` : ""}
+                </span>
+              </button>
+            ))}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-0.5 px-2 py-1 font-sans text-[10.5px] text-ink-muted underline"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function NewCampaign() {
   const navigate = useNavigate();
@@ -298,12 +408,11 @@ export function NewCampaign() {
                     )}
                   </div>
                   {selected && (
-                    <input
-                      type="url"
-                      value={stop.venue_url ?? ""}
-                      onChange={(e) => setVenueUrl(city.city_id, e.target.value)}
-                      placeholder="Venue or promoter URL (optional) — pulls capacity & logistics notes"
-                      className="mt-2 w-full rounded-md border border-line bg-paper-raised px-2 py-1.5 font-sans text-[12px] text-ink outline-none placeholder:text-ink-muted/70 focus:border-ink/30"
+                    <VenueField
+                      cityName={city.city_name}
+                      country={city.country}
+                      venueUrl={stop.venue_url ?? ""}
+                      onChange={(url) => setVenueUrl(city.city_id, url)}
                     />
                   )}
                 </div>
