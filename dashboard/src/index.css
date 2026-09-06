@@ -1,44 +1,85 @@
 @import "tailwindcss";
-@import "@fontsource/fraunces/400.css";
-@import "@fontsource/fraunces/500.css";
-@import "@fontsource/fraunces/600.css";
-@import "@fontsource/fraunces/400-italic.css";
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
 @import "@fontsource/jetbrains-mono/500.css";
 @import "@fontsource/jetbrains-mono/600.css";
+@import "@fontsource/jetbrains-mono/700.css";
+@import "@fontsource/jetbrains-mono/800.css";
 
 @theme {
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  /* "Premiere Neon" (chosen 2026-09-07, superseding the earlier Fraunces
+     cinema-ops-room look): bold uppercase mono headlines instead of a serif
+     -- marquee/ticket-stub energy over editorial prestige. Weight/case/
+     tracking for actual headline treatment lives in .font-display below,
+     since Tailwind's generated font-<key> utility only carries font-family. */
+  --font-display: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   /* Stamped/slate treatment on CueCard's meta line -- a call-sheet's
      typewritten fields, not a UI label. Used sparingly, never for body copy. */
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
 
-  /* Cinema ops room: dark canvas shell, warm paper content surfaces. */
-  --color-canvas: #101014;
-  --color-canvas-raised: #17171d;
-  --color-canvas-line: #26262f;
-  --color-canvas-text: #ece9e2;
-  --color-canvas-muted: #8f8c9a;
+  /* Near-black canvas, stark white paper cards, sharp corners (see the
+     --radius-* overrides below) -- bolder and more graphic than the
+     earlier warm/soft cinema-ops-room treatment. */
+  --color-canvas: #08080a;
+  --color-canvas-raised: #17161c;
+  --color-canvas-line: #232228;
+  --color-canvas-text: #f5f4f0;
+  --color-canvas-muted: #8d8a95;
 
-  --color-paper: #fbfaf7;
-  --color-paper-raised: #ffffff;
-  --color-ink: #14151a;
-  --color-ink-muted: rgba(20, 21, 26, 0.58);
-  --color-line: rgba(20, 21, 26, 0.1);
+  --color-paper: #ffffff;
+  --color-paper-raised: #f5f5f3;
+  --color-ink: #0a0a0a;
+  --color-ink-muted: rgba(10, 10, 10, 0.55);
+  --color-line: rgba(10, 10, 10, 0.1);
 
-  --color-gold: #d4a24e;
-  --color-gold-soft: #e8c98a;
+  /* Neon yellow reads near-white on white paper as TEXT (see dataviz
+     skill's validate_palette.js: 1.27:1 contrast on #ffffff, hard FAIL) --
+     shifted slightly toward amber so it still registers as a border/fill
+     on light cards, not just on the dark canvas where pure yellow is fine. */
+  --color-gold: #ffcc00;
+  --color-gold-soft: #ffe066;
 
-  /* Per-city accents — shared with the Cloud Run delight-card renderer. */
-  --color-mumbai: #c9622b;
-  --color-london: #2c4a63;
-  --color-tokyo: #8b3a52;
-  --color-saopaulo: #2f7d5a;
-  --color-newyork: #3a3f8f;
+  /* Per-city accents — shared with the Cloud Run delight-card renderer
+     (cloud_run/delight_card_renderer/main.py:_CITY_ACCENTS still has the
+     PRE-"Premiere Neon" hexes -- not yet updated, tracked as a known
+     follow-up rather than silently drifted). Re-validated 2026-09-07 via
+     the dataviz skill's validate_palette.js against BOTH surfaces this
+     app actually uses them on:
+       node scripts/validate_palette.js "#ff3d00,#0091ea,#ff00aa,#009e5c,#7c4dff" --mode dark --surface "#08080a"
+       node scripts/validate_palette.js "#ff3d00,#0091ea,#ff00aa,#009e5c,#7c4dff" --mode light --surface "#ffffff"
+     Both ALL CHECKS PASS -- the same five hexes clear the dark canvas's
+     tighter OKLCH lightness band [0.48,0.67], so unlike the previous
+     palette this one doesn't need separate dark/light variants
+     (cityTheme.ts's cityAccent()/cityAccentOnPaper() still exist as two
+     functions for call-site clarity, but now return the same values). */
+  --color-mumbai: #ff3d00;
+  --color-london: #0091ea;
+  --color-tokyo: #ff00aa;
+  --color-saopaulo: #009e5c;
+  --color-newyork: #7c4dff;
+
+  /* Sharp corners over soft ones -- the other half of "Premiere Neon".
+     Overriding the shared tokens (not just the 2xl one actually eyeballed
+     in the mockup) so every rounded-* utility in the app moves together;
+     rounded-full stays untouched since pills/dots are meant to stay round. */
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 5px;
+  --radius-2xl: 6px;
+}
+
+/* Tailwind's generated `.font-display` utility only sets font-family; the
+   rest of the "marquee" treatment (weight, case, tracking) lives here so
+   every existing and future font-display usage gets it for free instead of
+   needing uppercase/tracking classes copy-pasted at each of the ~14 call
+   sites. */
+.font-display {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
 }
 
 body {
@@ -77,9 +118,9 @@ body {
   background-image: linear-gradient(
     90deg,
     var(--color-canvas-raised) 0%,
-    rgba(212, 162, 78, 0.1) 30%,
-    rgba(212, 162, 78, 0.18) 50%,
-    rgba(212, 162, 78, 0.1) 70%,
+    rgba(255, 204, 0, 0.1) 30%,
+    rgba(255, 204, 0, 0.18) 50%,
+    rgba(255, 204, 0, 0.1) 70%,
     var(--color-canvas-raised) 100%
   );
   background-size: 800px 100%;
