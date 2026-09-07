@@ -154,7 +154,7 @@ export function Dashboard() {
               {data.campaign.campaign_type.replace(/_/g, " ")} · {data.campaign.genre}
             </p>
           </div>
-          <h1 className="mt-1.5 font-display text-[38px] leading-none text-canvas-text">{data.campaign.title}</h1>
+          <h1 className="mt-1.5 text-balance font-display text-[38px] leading-none text-canvas-text">{data.campaign.title}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <CampaignEditChatToggle open={editOpen} onToggle={() => setEditOpen((v) => !v)} />
@@ -233,7 +233,7 @@ export function Dashboard() {
             >
               <Link
                 to={`/city/${city.city_id}`}
-                className="group block transition-transform duration-200 hover:-translate-y-1"
+                className="group block rounded-2xl transition-transform duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
               >
                 <CueCard
                   accent={accent}
@@ -257,7 +257,7 @@ export function Dashboard() {
                         isFinal ? "bg-emerald-900/10 text-emerald-800" : "bg-black/5 text-ink-muted"
                       }`}
                     >
-                      {isFinal ? <CheckCircle2 size={11} /> : <Clock size={11} />}
+                      {isFinal ? <CheckCircle2 size={11} aria-hidden /> : <Clock size={11} aria-hidden />}
                       {isFinal ? "Final" : "Pending"}
                     </span>
                   </div>
@@ -269,7 +269,7 @@ export function Dashboard() {
                       </p>
                       {city.grounding_check_passed && (
                         <span className="flex items-center gap-1 font-sans text-[10px] font-medium text-emerald-700">
-                          <ShieldCheck size={11} /> Verified
+                          <ShieldCheck size={11} aria-hidden /> Verified
                         </span>
                       )}
                     </div>
@@ -278,11 +278,12 @@ export function Dashboard() {
 
                   <div className="mt-5 flex items-center justify-between border-t border-line pt-3">
                     <span className="flex items-center gap-1.5 font-sans text-[12px] text-ink-muted">
-                      <MapPin size={12} />
+                      <MapPin size={12} aria-hidden />
                       City intelligence &amp; delight card
                     </span>
                     <TrendingUp
                       size={13}
+                      aria-hidden
                       className="text-ink-muted opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                       style={{ color: accent }}
                     />

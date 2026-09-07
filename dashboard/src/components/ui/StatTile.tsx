@@ -32,7 +32,7 @@ export function StatTile({
         <p className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-canvas-muted">
           {label}
         </p>
-        {icon && <span className="shrink-0 text-canvas-muted">{icon}</span>}
+        {icon && <span className="shrink-0 text-canvas-muted" aria-hidden>{icon}</span>}
       </div>
       <p className="mt-2 font-display text-[26px] leading-none tracking-tight text-canvas-text tabular-nums">
         {value}
