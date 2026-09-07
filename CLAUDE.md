@@ -12,7 +12,7 @@ Goal is not just a valid submission — the intent is to genuinely compete for p
 - `parallel_partner.md` — **our chosen partner track.** Parallel Search/Extract/Task/Monitor APIs for live web grounding, official Gemini Enterprise integration path, MCP server option. Track requirement: must actively call Parallel's Search API at runtime (not just reference it in docs).
 
 ## Key hackathon constraints (from the source docs)
-- **Deadline:** September 8, 2026, 2:30 AM IST.
+- **Deadline:** September 10, 2026, 2:30 AM IST (corrected 2026-09-08 from a live Devpost schedule-page screenshot — was documented as Sept 8; see `devpost_google_hackathon_overview.md` for the full correction, including judging-period and winners-announced dates that also shifted).
 - **Required stack:** Gemini + Google Cloud Agent Builder (Playbooks), Agent Builder Data Stores (BigQuery), Enterprise Agent Platform SDK (Python), Cloud Run, Secret Manager.
 - **Must integrate a partner track** to be eligible for prizes. **All 5 tracks are now announced (confirmed 2026-07-30): IBM, Grafana, Parallel, ClickHouse, Replit** — five identical prize buckets, $75,000 total, judged independently per track (was $10K/IBM-only as of July 28). Submission requires selecting exactly one.
 - **Judging criteria:** Technological Implementation, Design, Potential Impact, Quality of Idea.

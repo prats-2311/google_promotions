@@ -4,10 +4,10 @@
 
 **Hosted by:** Google Cloud + Devpost  
 **Status:** Open for submissions  
-**Deadline:** September 8, 2026 @ 2:30 AM IST (Sept 7, 2026 21:00 UTC)  
-**Participants:** 1,421+ (as of July 2026)  
+**Deadline:** September 10, 2026 @ 2:30 AM IST (Sept 9, 2026 21:00 UTC) — corrected 2026-09-08 from a live Devpost schedule-page screenshot; the Sept 8 date below was stale  
+**Participants:** 9,866+ (per the live schedule-page screenshot, 2026-09-08)  
 **Format:** Online, Public  
-**Source:** [https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/) — key facts re-verified live via Devpost API 2026-08-03
+**Source:** [https://agentic-cinema.devpost.com/](https://agentic-cinema.devpost.com/) — key facts re-verified live via Devpost API 2026-08-03; dates below re-corrected 2026-09-08 via a live screenshot of the Schedule tab (that tab's own timestamps are the authoritative source over the earlier API pull)
 
 ---
 
@@ -183,16 +183,16 @@ To submit a valid project, you must provide:
 
 ## 📅 Key Dates
 
-All verified live against the Devpost API on 2026-08-03 (UTC timestamps converted below):
+Originally verified live against the Devpost API on 2026-08-03; the three bolded rows were re-corrected 2026-09-08 from a live screenshot of the Devpost project page's own Schedule tab, which had since shifted later — that tab is the authoritative source (it's what Devpost actually enforces), not the earlier API pull:
 
 | Event | Date |
 |---|---|
-| Submissions opened | July 27, 2026 |
-| **Submission Deadline** | **September 8, 2026 @ 2:30 AM IST** (Sept 7, 2026 21:00 UTC / 2:00 PM Pacific) |
-| Judging period | September 23 – October 7, 2026 (19:00 UTC / 12:00 PM Pacific start & end) |
-| **Winners announced** | **October 12, 2026** (19:00 UTC / 12:00 PM Pacific) |
-| $100 GCP credit form deadline | Must be requested & redeemed before **August 31, 2026** |
-| Days Remaining to submit | ~36 days (as of August 3, 2026) |
+| Submissions opened | July 27, 2026 (per the original API pull) / July 28, 2026 @ 2:15 AM IST (per the Schedule tab — same instant, just IST- vs UTC-anchored date labels, not a real discrepancy) |
+| **Submission Deadline** | **September 10, 2026 @ 2:30 AM IST** (Sept 9, 2026 21:00 UTC) — was September 8; corrected 2026-09-08 |
+| Judging period | September 11 – October 9, 2026 (00:30 AM IST start & end) — was September 23 – October 7; corrected 2026-09-08 |
+| **Winners announced** | **October 14, 2026** (00:30 AM IST) — was October 12; corrected 2026-09-08 |
+| $100 GCP credit form deadline | Must be requested & redeemed before **August 31, 2026** (not re-verified in this pass — no reason to expect this one moved) |
+| Days Remaining to submit | ~2 days (as of 2026-09-08, against the corrected Sept 10 deadline) |
 
 🔗 [Full schedule](https://agentic-cinema.devpost.com/details/dates)
 
