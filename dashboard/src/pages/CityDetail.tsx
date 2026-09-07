@@ -31,9 +31,14 @@ import {
   Stamp,
   CloudRain,
   ClipboardCheck,
+  Gauge,
+  Crown,
+  ShieldCheck,
+  Clapperboard,
   type LucideIcon,
 } from "lucide-react";
 import { StatMeter } from "../components/ui/StatMeter";
+import { StatTile } from "../components/ui/StatTile";
 import { getCityDetail } from "../lib/api";
 import type { CityDetail as CityDetailData, TalentBrief, TraceStep } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
@@ -741,24 +746,65 @@ export function CityDetail() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: "easeOut" }}
     >
-      <Link to="/" className="mb-6 flex items-center gap-1.5 font-sans text-[13px] text-canvas-muted hover:text-canvas-text">
-        <ArrowLeft size={14} /> Back to campaign
+      <Link
+        to="/"
+        className="mb-6 inline-flex items-center gap-1.5 rounded font-sans text-[13px] text-canvas-muted outline-none transition-colors hover:text-canvas-text focus-visible:ring-2 focus-visible:ring-gold"
+      >
+        <ArrowLeft size={14} aria-hidden /> Back to campaign
       </Link>
 
-      <header className="mb-6 flex items-end justify-between">
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.16em]" style={{ color: accent }}>
-            Stop {data.stop.sequence_order} · {data.stop.stop_date}
-          </p>
-          <h1 className="mt-1 font-display text-[38px] text-canvas-text">{data.stop.city_name}</h1>
-          {data.fanSignal && (
-            <p className="mt-1 font-sans text-[13px] text-canvas-muted">
-              {data.fanSignal.city_importance_tier} · {data.fanSignal.enthusiasm_score}/100 enthusiasm ·{" "}
-              {data.fanSignal.fan_behavior_style}
-            </p>
-          )}
-        </div>
+      <header className="mb-6">
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em]" style={{ color: accent }}>
+          Stop {data.stop.sequence_order} · {data.stop.stop_date}
+          {data.stop.event_format ? ` · ${data.stop.event_format}` : ""}
+        </p>
+        <h1 className="mt-1.5 text-balance font-display text-[42px] leading-none text-canvas-text">
+          {data.stop.city_name}
+        </h1>
+        {data.fanSignal && (
+          <p className="mt-2 font-sans text-[13px] text-canvas-muted">{data.fanSignal.fan_behavior_style}</p>
+        )}
       </header>
+
+      {/* City-level summary strip -- mirrors the dashboard's KPI tiles so a
+          planner drilling in keeps the same at-a-glance vocabulary. Only the
+          real fan-signal/brief fields; nothing is invented when a field is
+          genuinely absent. */}
+      {data.fanSignal && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile
+            label="Fan Enthusiasm"
+            value={`${data.fanSignal.enthusiasm_score}`}
+            hint="strategic score / 100"
+            accent={accentPaper}
+            icon={<Gauge size={13} />}
+          />
+          <StatTile
+            label="Importance Tier"
+            value={data.fanSignal.city_importance_tier}
+            hint="market priority for this tour"
+            icon={<Crown size={13} />}
+          />
+          <StatTile
+            label="Grounding"
+            value={
+              data.brief?.grounding_check_passed == null
+                ? "—"
+                : data.brief.grounding_check_passed
+                  ? "Verified"
+                  : "Review"
+            }
+            hint="fact-checked vs. live sources"
+            icon={<ShieldCheck size={13} />}
+          />
+          <StatTile
+            label="Artist Fit"
+            value={data.fanSignal.artist_type}
+            hint={`${data.campaign.genre} audience match`}
+            icon={<Clapperboard size={13} />}
+          />
+        </div>
+      )}
 
       {data.brief && (
         <div className="mb-6">

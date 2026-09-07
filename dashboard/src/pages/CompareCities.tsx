@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Table2, BarChart3 } from "lucide-react";
+import { Table2, BarChart3, Trophy, Gauge, MapPin, Crown } from "lucide-react";
 import { getCampaignOverview, rankCities } from "../lib/api";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { useCampaignContext } from "../lib/campaignContext";
+import { StatTile } from "../components/ui/StatTile";
 import { CompareCitiesSkeleton } from "../components/ui/Skeletons";
 
 interface RankedCity {
@@ -14,6 +15,12 @@ interface RankedCity {
   enthusiasm_score: number;
   city_importance_tier: string;
   strategic_rank: number;
+}
+
+// Count of cities in the top importance tier ("Tier 1", "tier_1", "1", …) --
+// the strategic headline "how many must-win markets is this tour hitting".
+function tierOneCount(cities: RankedCity[]): number {
+  return cities.filter((c) => /\b1\b/.test(c.city_importance_tier)).length;
 }
 
 async function loadComparison(campaignId: string) {
@@ -84,6 +91,10 @@ export function CompareCities() {
     );
   }
   const { overview, ranked } = data;
+  const avgScore = ranked.length
+    ? Math.round(ranked.reduce((s, c) => s + c.enthusiasm_score, 0) / ranked.length)
+    : 0;
+  const leader = ranked[0] ?? null;
 
   return (
     <motion.div
@@ -91,27 +102,69 @@ export function CompareCities() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: "easeOut" }}
     >
-      <header className="mb-8 flex items-end justify-between">
-        <div>
+      <header className="mb-6 flex items-end justify-between gap-4">
+        <div className="min-w-0">
           <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">
             {overview.campaign.title}
           </p>
-          <h1 className="mt-1 font-display text-[30px] text-canvas-text">Compare Cities</h1>
-          <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
-            Ranked by strategic value — tier first, enthusiasm score as tiebreak. Comparing this campaign's{" "}
-            {overview.cities.length} {overview.cities.length === 1 ? "stop" : "stops"} — the city library has more;
-            add them to a campaign to compare here.
+          <h1 className="mt-1 text-balance font-display text-[32px] leading-none text-canvas-text">Compare Cities</h1>
+          <p className="mt-2 max-w-2xl font-sans text-[13px] text-canvas-muted">
+            Ranked by strategic value — importance tier first, fan enthusiasm as the tiebreak.
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg border border-canvas-line p-1">
+        <div className="flex shrink-0 gap-1 rounded-lg border border-canvas-line p-1">
           <ViewToggle active={view === "chart"} onClick={() => setView("chart")} icon={BarChart3} label="Chart" />
           <ViewToggle active={view === "table"} onClick={() => setView("table")} icon={Table2} label="Table" />
         </div>
       </header>
 
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile
+          label="Cities Compared"
+          value={ranked.length}
+          hint="stops in this campaign"
+          icon={<MapPin size={13} />}
+        />
+        <StatTile
+          label="Strategic #1"
+          value={leader ? leader.city_name : "—"}
+          hint={leader ? `${leader.city_importance_tier} · ${leader.enthusiasm_score}/100` : "no cities yet"}
+          accent={leader ? cityAccentOnPaper(leader.city_id) : undefined}
+          icon={<Trophy size={13} />}
+        />
+        <StatTile
+          label="Avg Enthusiasm"
+          value={avgScore}
+          hint="mean across all stops / 100"
+          icon={<Gauge size={13} />}
+        />
+        <StatTile
+          label="Tier 1 Markets"
+          value={`${tierOneCount(ranked)}/${ranked.length}`}
+          hint="must-win markets on the route"
+          icon={<Crown size={13} />}
+        />
+      </div>
+
       <div className="rounded-2xl bg-paper p-6">
         {view === "chart" ? (
-          <div className="space-y-4">
+          <div className="relative space-y-4">
+            {/* Campaign-average reference line -- lets a reader see each city
+                against the mean at a glance, not just against each other. The
+                bars share a full-width 0-100 track, so a single line at
+                avg% lands correctly across every row. */}
+            {avgScore > 0 && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 z-10 flex flex-col items-center text-ink/25"
+                style={{ left: `${avgScore}%` }}
+              >
+                <span className="w-px flex-1" style={{ backgroundImage: "repeating-linear-gradient(to bottom, currentColor 0 3px, transparent 3px 6px)" }} />
+                <span className="mt-1 whitespace-nowrap rounded bg-ink px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wide text-paper tabular-nums">
+                  Avg {avgScore}
+                </span>
+              </div>
+            )}
             {ranked.map((city, i) => {
               const accent = cityAccentOnPaper(city.city_id);
               // enthusiasm_score is hard-clamped to [0, 100] by the scoring
@@ -126,14 +179,19 @@ export function CompareCities() {
                 <Link
                   key={city.city_id}
                   to={`/city/${city.city_id}`}
-                  className="block"
+                  className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ink/40"
                   onMouseEnter={() => setHovered(city.city_id)}
                   onMouseLeave={() => setHovered(null)}
                 >
                   <div className="mb-1.5 flex items-baseline justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-sans text-[11px] font-semibold text-ink-muted">#{city.strategic_rank}</span>
+                      <span className="font-mono text-[11px] font-semibold tabular-nums text-ink-muted">
+                        #{city.strategic_rank}
+                      </span>
                       <span className="font-display text-[16px] text-ink">{city.city_name}</span>
+                      {i === 0 && (
+                        <Crown size={13} aria-hidden style={{ color: accent }} />
+                      )}
                       <span className="rounded-full bg-black/5 px-2 py-0.5 font-sans text-[10px] text-ink-muted">
                         {city.city_importance_tier}
                       </span>
@@ -147,7 +205,7 @@ export function CompareCities() {
                       className="h-5 rounded-r-[4px]"
                       style={{
                         backgroundColor: accent,
-                        opacity: hovered === null || hovered === city.city_id ? 1 : 0.55,
+                        opacity: hovered === null || hovered === city.city_id ? 1 : 0.5,
                       }}
                       initial={{ width: 0 }}
                       animate={{ width: `${widthPct}%` }}
@@ -169,18 +227,25 @@ export function CompareCities() {
               </tr>
             </thead>
             <tbody>
-              {ranked.map((city) => (
-                <tr key={city.city_id} className="border-b border-line last:border-0">
-                  <td className="py-2.5 pr-3 tabular-nums text-ink-muted">{city.strategic_rank}</td>
-                  <td className="py-2.5 pr-3">
-                    <Link to={`/city/${city.city_id}`} className="text-ink hover:underline">
-                      {city.city_name}
-                    </Link>
-                  </td>
-                  <td className="py-2.5 pr-3 text-ink-muted">{city.city_importance_tier}</td>
-                  <td className="py-2.5 text-right tabular-nums font-semibold text-ink">{city.enthusiasm_score}</td>
-                </tr>
-              ))}
+              {ranked.map((city) => {
+                const accent = cityAccentOnPaper(city.city_id);
+                return (
+                  <tr key={city.city_id} className="border-b border-line transition-colors last:border-0 hover:bg-black/[0.025]">
+                    <td className="py-2.5 pr-3 font-mono tabular-nums text-ink-muted">{city.strategic_rank}</td>
+                    <td className="py-2.5 pr-3">
+                      <Link
+                        to={`/city/${city.city_id}`}
+                        className="inline-flex items-center gap-2 rounded text-ink outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ink/40"
+                      >
+                        <span className="size-2 rounded-full" style={{ backgroundColor: accent }} aria-hidden />
+                        {city.city_name}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 pr-3 text-ink-muted">{city.city_importance_tier}</td>
+                    <td className="py-2.5 text-right tabular-nums font-semibold text-ink">{city.enthusiasm_score}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
