@@ -85,8 +85,6 @@ export function CompareCities() {
   }
   const { overview, ranked } = data;
 
-  const maxScore = Math.max(...ranked.map((r) => r.enthusiasm_score), 1);
-
   return (
     <motion.div
       initial={reduceMotion ? undefined : { opacity: 0, y: 6 }}
@@ -100,7 +98,9 @@ export function CompareCities() {
           </p>
           <h1 className="mt-1 font-display text-[30px] text-canvas-text">Compare Cities</h1>
           <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
-            Ranked by strategic value — tier first, enthusiasm score as tiebreak.
+            Ranked by strategic value — tier first, enthusiasm score as tiebreak. Comparing this campaign's{" "}
+            {overview.cities.length} {overview.cities.length === 1 ? "stop" : "stops"} — the city library has more;
+            add them to a campaign to compare here.
           </p>
         </div>
         <div className="flex gap-1 rounded-lg border border-canvas-line p-1">
@@ -114,7 +114,14 @@ export function CompareCities() {
           <div className="space-y-4">
             {ranked.map((city, i) => {
               const accent = cityAccentOnPaper(city.city_id);
-              const widthPct = (city.enthusiasm_score / maxScore) * 100;
+              // enthusiasm_score is hard-clamped to [0, 100] by the scoring
+              // SDK (sdk/enthusiasm_scoring.py), so the score IS the percent
+              // of the fixed scale -- not a percent of the current
+              // comparison set's own max. Normalizing against the local max
+              // (as this used to) makes any two similar or low scores both
+              // render as full bars, which is actively misleading, not just
+              // less pretty.
+              const widthPct = city.enthusiasm_score;
               return (
                 <Link
                   key={city.city_id}
