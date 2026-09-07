@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist, FranchiseContext } from "./types";
 
 // Defense in depth alongside the BFF's own callTool timeout (server/index.js)
 // -- a request that somehow hangs past this still rejects instead of leaving
@@ -196,12 +196,18 @@ export async function createCampaign(input: NewCampaignInput) {
   return res.json() as Promise<{ campaign_id: string; status: string }>;
 }
 
-export async function chatAboutStrategy(messages: ChatMessage[], strategyText: string | null) {
+export async function chatAboutStrategy(
+  messages: ChatMessage[],
+  strategyText: string | null,
+  franchiseContext: FranchiseContext | null = null
+) {
   const res = await fetch("/api/campaign-strategy-chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, strategy_text: strategyText }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    body: JSON.stringify({ messages, strategy_text: strategyText, franchise_context: franchiseContext }),
+    // Matches the BFF's own signal for this route -- a turn that triggers
+    // franchise-context research chains up to 4 calls.
+    signal: AbortSignal.timeout(90000),
   });
   if (!res.ok) throw new Error(`campaign strategy chat failed: ${res.status}`);
   return res.json() as Promise<StrategyChatResponse>;

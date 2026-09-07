@@ -2205,6 +2205,79 @@ def genre_recommendations():
 
 _SUPPORTED_CAMPAIGN_TYPES = ["film_promo_tour", "music_world_tour"]
 
+# Titles legitimately need punctuation _validate_place_name doesn't allow
+# (colons, ampersands, "2049") -- but this still flows into a Parallel
+# Search objective and a Gemini prompt once research fires, so the same
+# injection-surface discipline applies: no newlines (which could smuggle a
+# fake role-labeled line into the downstream prompt), no wall of text.
+_TITLE_ALLOWED_EXTRA_CHARS = set(" '.-,:!?&()")
+
+
+def _validate_title(title: str) -> str:
+    stripped = title.strip()
+    if not stripped:
+        raise PlaceNameValidationError("title must not be empty")
+    if len(stripped) > _PLACE_NAME_MAX_LENGTH:
+        raise PlaceNameValidationError(f"title must be {_PLACE_NAME_MAX_LENGTH} characters or fewer")
+    if not all(ch.isalnum() or ch in _TITLE_ALLOWED_EXTRA_CHARS for ch in stripped):
+        raise PlaceNameValidationError("title contains characters that aren't allowed in a title")
+    return stripped
+
+
+def _franchise_context_search(title: str) -> list[dict]:
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    search = _parallel_client.search(
+        objective=(
+            f'Identify whether "{title}" is a real, existing creative property (film, novel, '
+            f"franchise) -- if so, its core premise and central themes -- for a tour/press-tour "
+            f"marketing planner deciding how to promote it."
+        ),
+        search_queries=[f"{title} film", f"{title} novel plot", f"{title} synopsis themes"],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+_FRANCHISE_CONTEXT_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "is_real_property": {"type": "BOOLEAN"},
+        "source_type": {"type": "STRING", "nullable": True},
+        "synopsis": {"type": "STRING", "nullable": True},
+        "core_themes": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+    },
+    "required": ["is_real_property", "core_themes", "confidence"],
+}
+
+
+def _local_delight_digest(city_ids: list[str]) -> str:
+    """Compact real local_delight highlights for cities already proposed in
+    this conversation, so the franchise-informed reply can connect a real
+    theme to real city culture (an "ocean city" + "homecoming" idea) instead
+    of coincidence. Cities with no local_delight row (an unseeded city with
+    only demographic data) are silently skipped, not treated as an error --
+    this digest is a nice-to-have addition to the prompt, not a requirement."""
+    if not city_ids:
+        return ""
+    lines = []
+    for city_id in city_ids[:5]:
+        rows = _query(
+            f"SELECT cultural_references, crowd_moment_suggestions FROM `{_DATASET}.local_delight` "
+            f"WHERE city_id = @city_id",
+            [bigquery.ScalarQueryParameter("city_id", "STRING", city_id)],
+        )
+        if not rows:
+            continue
+        r = rows[0]
+        refs = ", ".join(list(r["cultural_references"] or [])[:3])
+        moments = ", ".join(list(r["crowd_moment_suggestions"] or [])[:2])
+        lines.append(f"- {city_id}: cultural references: {refs}; crowd moment ideas: {moments}")
+    if not lines:
+        return ""
+    return "\n\nREAL LOCAL CULTURE HIGHLIGHTS FOR CITIES ALREADY IN THIS CAMPAIGN:\n" + "\n".join(lines)
+
 
 @app.post("/campaign_strategy_chat")
 def campaign_strategy_chat():
@@ -2222,6 +2295,9 @@ def campaign_strategy_chat():
     if not isinstance(messages, list) or not messages:
         return jsonify({"error": "missing required field: messages"}), 400
     strategy_text = payload.get("strategy_text")
+    # Echoed back by the client each turn (this route is otherwise stateless)
+    # so a title, once researched, isn't re-researched on every message.
+    prior_franchise_context = payload.get("franchise_context")
 
     transcript = "\n".join(
         f"{m.get('role', 'user').upper()}: {m.get('content', '')}" for m in messages
@@ -2242,6 +2318,11 @@ def campaign_strategy_chat():
         "properties": {
             "reply": {"type": "STRING"},
             "ready": {"type": "BOOLEAN"},
+            "detected_title": {
+                "type": "STRING",
+                "nullable": True,
+                "description": "The campaign/story title, as soon as one is clearly stated -- independent of whether the full campaign is ready.",
+            },
             "suggested_campaign": {
                 "type": "OBJECT",
                 "nullable": True,
@@ -2268,42 +2349,95 @@ def campaign_strategy_chat():
         "required": ["reply", "ready"],
     }
 
-    prompt = (
-        "You are a helpful campaign-planning assistant inside a tour/press-tour "
-        "marketing dashboard, helping a user turn an existing strategy (if any) "
-        "or a rough idea into a structured campaign.\n\n"
-        f"Supported cities, with their country and region (use these city_id "
-        f"values, nothing else):\n{city_geo_block}\n\n"
-        f"Supported campaign_type values are EXACTLY: {_SUPPORTED_CAMPAIGN_TYPES}.\n\n"
-        "The user may describe a theme or vibe rather than exact cities and "
-        "dates -- 'one stop per continent', 'wherever this genre is popular', "
-        "'somewhere with a big theater-going fan base'. Don't just reply with "
-        "a bare list of supported cities and ask them to pick -- use the "
-        "country/region info above to actively propose a specific, named "
-        "shortlist that fits what they described (e.g. for 'one stop per "
-        "continent', name one specific supported city per distinct region "
-        "represented above), and say so in `reply`. Engage with the creative "
-        "pitch itself before pivoting to logistics -- a one-line acknowledgment "
-        "of their idea reads a lot better than jumping straight to a checklist.\n\n"
-        "Still ask clarifying questions in `reply` if you don't yet know the "
-        "title, campaign type, genre, and at least one city stop with a date "
-        "-- but propose concrete options rather than only asking open questions "
-        "once you know enough about the theme to do so. Only set ready=true and "
-        "populate suggested_campaign once you have enough to propose a real "
-        "campaign — never suggest a city_id outside the supported list above, "
-        "and never invent a stop_date; ask for one instead.\n\n"
-        f"CONVERSATION SO FAR:\n{transcript}{strategy_block}"
-    )
+    def build_prompt(extra_context: str = "") -> str:
+        return (
+            "You are a helpful campaign-planning assistant inside a tour/press-tour "
+            "marketing dashboard, helping a user turn an existing strategy (if any) "
+            "or a rough idea into a structured campaign.\n\n"
+            f"Supported cities, with their country and region (use these city_id "
+            f"values, nothing else):\n{city_geo_block}\n\n"
+            f"Supported campaign_type values are EXACTLY: {_SUPPORTED_CAMPAIGN_TYPES}.\n\n"
+            "The user may describe a theme or vibe rather than exact cities and "
+            "dates -- 'one stop per continent', 'wherever this genre is popular', "
+            "'somewhere with a big theater-going fan base'. Don't just reply with "
+            "a bare list of supported cities and ask them to pick -- use the "
+            "country/region info above to actively propose a specific, named "
+            "shortlist that fits what they described (e.g. for 'one stop per "
+            "continent', name one specific supported city per distinct region "
+            "represented above), and say so in `reply`. Engage with the creative "
+            "pitch itself before pivoting to logistics -- a one-line acknowledgment "
+            "of their idea reads a lot better than jumping straight to a checklist.\n\n"
+            "As soon as the user states a specific campaign/story title, echo it "
+            "back verbatim in `detected_title` (even before the campaign is "
+            "otherwise ready) -- exactly what they typed, nothing paraphrased.\n\n"
+            "Still ask clarifying questions in `reply` if you don't yet know the "
+            "title, campaign type, genre, and at least one city stop with a date "
+            "-- but propose concrete options rather than only asking open questions "
+            "once you know enough about the theme to do so. Only set ready=true and "
+            "populate suggested_campaign once you have enough to propose a real "
+            "campaign — never suggest a city_id outside the supported list above, "
+            "and never invent a stop_date; ask for one instead.\n\n"
+            f"CONVERSATION SO FAR:\n{transcript}{strategy_block}{extra_context}"
+        )
 
     try:
-        result = _call_gemini_json(prompt, schema)
+        draft = _call_gemini_json(build_prompt(), schema)
     except (requests.HTTPError, KeyError, ValueError) as e:
         return jsonify({"error": f"Gemini chat call failed: {e}"}), 502
+
+    result = draft
+    franchise_context = prior_franchise_context
+    detected_title = draft.get("detected_title")
+    prior_title = (prior_franchise_context or {}).get("title", "")
+    needs_research = bool(detected_title) and detected_title.strip().lower() != prior_title.strip().lower()
+
+    if needs_research:
+        try:
+            clean_title = _validate_title(detected_title)
+            search_results = _franchise_context_search(clean_title)
+            excerpt_block = "\n\n".join(
+                f"Source: {r.get('title') or r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+                for r in search_results[:6]
+            )
+            context_prompt = (
+                f'Using ONLY the search excerpts below, determine whether "{clean_title}" is a real, '
+                f"existing creative property. If the excerpts don't clearly identify one, set "
+                f"is_real_property to false and leave source_type/synopsis null -- never invent a "
+                f"premise for a title that isn't actually found. Extract only real, source-backed "
+                f"themes -- do not name any real living person.\n\n"
+                f"SEARCH EXCERPTS:\n{excerpt_block or '(no results found)'}"
+            )
+            fc = _call_gemini_json(context_prompt, _FRANCHISE_CONTEXT_SCHEMA)
+            franchise_context = {"title": clean_title, **fc}
+
+            stop_ids = [
+                s.get("city_id") for s in (draft.get("suggested_campaign") or {}).get("stops", [])
+                if s.get("city_id")
+            ]
+            culture_block = _local_delight_digest(stop_ids)
+            fc_block = (
+                f"\n\nREAL RESEARCH ON \"{clean_title}\" (use this to make your reply immersive and "
+                f"propose genuinely specific creative tie-ins -- never invent beyond what's here, and "
+                f"never name a real living person as talent to invite):\n"
+                f"Real existing property: {fc.get('is_real_property')}\n"
+                f"Type: {fc.get('source_type')}\n"
+                f"Synopsis: {fc.get('synopsis')}\n"
+                f"Core themes: {', '.join(fc.get('core_themes') or [])}"
+                f"{culture_block}"
+            )
+            result = _call_gemini_json(build_prompt(fc_block), schema)
+        except (PlaceNameValidationError, parallel.APIError, RuntimeError, requests.HTTPError, KeyError, ValueError):
+            # Franchise research is an enrichment, not a required path -- a
+            # failure here degrades to the plain draft reply rather than
+            # failing the whole chat turn.
+            result = draft
+            franchise_context = prior_franchise_context
 
     return jsonify({
         "reply": result.get("reply", ""),
         "ready": bool(result.get("ready")),
         "suggested_campaign": result.get("suggested_campaign"),
+        "franchise_context": franchise_context,
     })
 
 

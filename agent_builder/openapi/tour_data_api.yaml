@@ -237,6 +237,21 @@ paths:
                       role: { type: string }
                       content: { type: string }
                 strategy_text: { type: string, nullable: true }
+                franchise_context:
+                  description: >
+                    Echoed back by the caller from a prior response so a
+                    title already researched this conversation isn't
+                    re-researched on every turn -- this route has no
+                    server-side session state.
+                  type: object
+                  nullable: true
+                  properties:
+                    title: { type: string }
+                    is_real_property: { type: boolean }
+                    source_type: { type: string, nullable: true }
+                    synopsis: { type: string, nullable: true }
+                    core_themes: { type: array, items: { type: string } }
+                    confidence: { type: string }
       responses:
         "200":
           description: Assistant reply, plus a suggested campaign once enough information is gathered.
@@ -262,6 +277,22 @@ paths:
                           properties:
                             city_id: { type: string }
                             stop_date: { type: string }
+                  franchise_context:
+                    description: >
+                      Real research on the campaign's title once one has
+                      been detected -- whether it's a real, existing
+                      property, its themes if so, and citations. Never
+                      fabricated for a title research didn't actually find;
+                      is_real_property is honestly false in that case.
+                    type: object
+                    nullable: true
+                    properties:
+                      title: { type: string }
+                      is_real_property: { type: boolean }
+                      source_type: { type: string, nullable: true }
+                      synopsis: { type: string, nullable: true }
+                      core_themes: { type: array, items: { type: string } }
+                      confidence: { type: string }
         "502":
           description: Gemini call failed.
 

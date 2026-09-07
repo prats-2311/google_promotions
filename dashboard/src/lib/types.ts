@@ -293,8 +293,18 @@ export interface SuggestedCampaign {
   stops: NewCampaignStopInput[];
 }
 
+export interface FranchiseContext {
+  title: string;
+  is_real_property: boolean;
+  source_type: string | null;
+  synopsis: string | null;
+  core_themes: string[];
+  confidence: "high" | "medium" | "low";
+}
+
 export interface StrategyChatResponse {
   reply: string;
   ready: boolean;
   suggested_campaign: SuggestedCampaign | null;
+  franchise_context: FranchiseContext | null;
 }

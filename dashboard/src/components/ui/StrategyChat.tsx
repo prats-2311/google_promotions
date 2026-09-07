@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { Loader2, Paperclip, Send, Sparkles, X } from "lucide-react";
+import { Loader2, Paperclip, Search, Send, Sparkles, X } from "lucide-react";
 import { chatAboutStrategy } from "../../lib/api";
-import type { ChatMessage, SuggestedCampaign } from "../../lib/types";
+import type { ChatMessage, FranchiseContext, SuggestedCampaign } from "../../lib/types";
 
 // .txt/.md only, read client-side via FileReader -- no multer/multipart on
 // the server (none installed today), no PDF parsing. A clean later add, not
@@ -16,6 +16,7 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
+  const [franchiseContext, setFranchiseContext] = useState<FranchiseContext | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -44,8 +45,9 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
     setSending(true);
     setError(null);
     try {
-      const result = await chatAboutStrategy(nextMessages, strategyText);
+      const result = await chatAboutStrategy(nextMessages, strategyText, franchiseContext);
       setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
+      setFranchiseContext(result.franchise_context);
       if (result.ready && result.suggested_campaign) {
         onSuggestion(result.suggested_campaign);
         setApplied(true);
@@ -93,6 +95,26 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
               Applied to the form below — review and edit before creating
             </p>
           )}
+        </div>
+      )}
+
+      {franchiseContext && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-line bg-paper-raised px-3 py-2">
+          <Search size={12} className="mt-0.5 shrink-0 text-ink-muted" />
+          <p className="font-sans text-[11.5px] leading-relaxed text-ink-muted">
+            {franchiseContext.is_real_property ? (
+              <>
+                Researched <span className="font-semibold text-ink">{franchiseContext.title}</span>
+                {franchiseContext.source_type ? ` (${franchiseContext.source_type})` : ""} —{" "}
+                {franchiseContext.core_themes.join(", ") || "no clear themes found"}
+              </>
+            ) : (
+              <>
+                Couldn't find <span className="font-semibold text-ink">{franchiseContext.title}</span> as an
+                existing property — treating it as an original title.
+              </>
+            )}
+          </p>
         </div>
       )}
 

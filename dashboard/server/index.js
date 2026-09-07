@@ -403,6 +403,11 @@ app.post("/api/campaign-strategy-chat", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
+      // A turn that triggers franchise-context research chains up to 4
+      // calls (draft, Parallel Search, context synthesis, refined reply) --
+      // the default 30s CALL_TOOL_TIMEOUT_MS learned the hard way it's too
+      // short for a chained request (see /api/bulk-add-cities).
+      signal: AbortSignal.timeout(90000),
     });
     res.json(result);
   } catch (err) {
