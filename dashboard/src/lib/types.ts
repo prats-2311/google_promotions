@@ -312,3 +312,29 @@ export interface StrategyChatResponse {
   suggested_campaign: SuggestedCampaign | null;
   franchise_context: FranchiseContext | null;
 }
+
+export interface ProposedCampaignChanges {
+  title: string | null;
+  genre: string | null;
+  campaign_type: string | null;
+  talent_roster: string[] | null;
+  add_stops: { city_id: string; stop_date: string }[];
+  remove_stop_city_ids: string[];
+}
+
+export interface CampaignEditChatResponse {
+  reply: string;
+  ready_to_apply: boolean;
+  proposed_changes: ProposedCampaignChanges | null;
+  franchise_context: FranchiseContext | null;
+}
+
+export interface UpdatedCampaign {
+  campaign_id: string;
+  title: string;
+  campaign_type: string;
+  genre: string;
+  talent_roster: string[];
+  status: string;
+  selected_metrics: string[];
+}

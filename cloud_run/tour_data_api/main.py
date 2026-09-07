@@ -1582,19 +1582,28 @@ def bulk_add_cities():
     return jsonify({"added": sorted(added), "skipped_existing": skipped_ids, "failed": failed})
 
 
+def _get_latest_campaign(campaign_id: str) -> bigquery.table.Row | None:
+    """The current state of a campaign, after however many /update_campaign
+    revisions -- QUALIFY picks the newest row per campaign_id, same pattern
+    as city_briefs. Returns None if the campaign has never existed."""
+    rows = _query(
+        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status, "
+        f"selected_metrics, created_at, updated_at "
+        f"FROM `{_DATASET}.campaigns` WHERE campaign_id = @campaign_id "
+        f"QUALIFY ROW_NUMBER() OVER (PARTITION BY campaign_id ORDER BY updated_at DESC) = 1",
+        [bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id)],
+    )
+    return rows[0] if rows else None
+
+
 @app.get("/campaigns")
 def get_campaign():
     campaign_id = request.args.get("campaign_id")
     if not campaign_id:
         return jsonify({"error": "missing required query param: campaign_id"}), 400
-    rows = _query(
-        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status, selected_metrics "
-        f"FROM `{_DATASET}.campaigns` WHERE campaign_id = @campaign_id",
-        [bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id)],
-    )
-    if not rows:
+    r = _get_latest_campaign(campaign_id)
+    if not r:
         return jsonify({"error": f"no campaign record for campaign_id={campaign_id}"}), 404
-    r = rows[0]
     return jsonify({
         "campaign_id": r["campaign_id"],
         "title": r["title"],
@@ -1608,9 +1617,15 @@ def get_campaign():
 
 @app.get("/campaigns_list")
 def list_campaigns():
+    # A campaign can now have multiple revision rows (see /update_campaign) --
+    # QUALIFY picks the latest per campaign_id; the outer ORDER BY still
+    # sorts the list by original creation time, not by which one was most
+    # recently edited, so editing an old campaign doesn't reshuffle the list.
     rows = _query(
-        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status, selected_metrics "
-        f"FROM `{_DATASET}.campaigns` ORDER BY created_at DESC",
+        f"SELECT campaign_id, title, campaign_type, genre, talent_roster, status, selected_metrics, created_at "
+        f"FROM `{_DATASET}.campaigns` "
+        f"QUALIFY ROW_NUMBER() OVER (PARTITION BY campaign_id ORDER BY updated_at DESC) = 1 "
+        f"ORDER BY created_at DESC",
         [],
     )
     return jsonify({
@@ -1637,6 +1652,7 @@ def create_campaign():
     if missing:
         return jsonify({"error": f"missing required field(s): {', '.join(missing)}"}), 400
 
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     row = {
         "campaign_id": payload["campaign_id"],
         "title": payload["title"],
@@ -1644,7 +1660,8 @@ def create_campaign():
         "genre": payload["genre"],
         "talent_roster": payload.get("talent_roster") or [],
         "status": payload.get("status", "active"),
-        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "created_at": now,
+        "updated_at": now,
         "selected_metrics": payload.get("selected_metrics") or [],
     }
     errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.campaigns", [row])
@@ -1653,35 +1670,122 @@ def create_campaign():
     return jsonify({"campaign_id": row["campaign_id"], "status": "inserted"})
 
 
+@app.post("/update_campaign")
+def update_campaign():
+    """Editing an ongoing campaign's title/genre/campaign_type/talent_roster
+    after creation: an UPDATE would hit the streaming-buffer limitation on a
+    row inserted within the last ~90 minutes (bigquery/CLAUDE.md), so this
+    inserts a new revision row instead -- only the fields present in the
+    payload change, everything else carries forward from the current state.
+    created_at is preserved from the original row; updated_at is what makes
+    this the new "latest" revision at read time."""
+    payload = request.get_json(silent=True) or {}
+    campaign_id = payload.get("campaign_id")
+    if not campaign_id:
+        return jsonify({"error": "missing required field: campaign_id"}), 400
+
+    current = _get_latest_campaign(campaign_id)
+    if not current:
+        return jsonify({"error": f"no campaign record for campaign_id={campaign_id}"}), 404
+
+    row = {
+        "campaign_id": campaign_id,
+        "title": payload.get("title", current["title"]),
+        "campaign_type": payload.get("campaign_type", current["campaign_type"]),
+        "genre": payload.get("genre", current["genre"]),
+        "talent_roster": payload.get("talent_roster", list(current["talent_roster"] or [])),
+        "status": payload.get("status", current["status"]),
+        "selected_metrics": payload.get("selected_metrics", list(current["selected_metrics"] or [])),
+        "created_at": current["created_at"].isoformat(),
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.campaigns", [row])
+    if errors:
+        return jsonify({"error": "insert failed", "details": errors}), 500
+    return jsonify({
+        "campaign_id": row["campaign_id"],
+        "title": row["title"],
+        "campaign_type": row["campaign_type"],
+        "genre": row["genre"],
+        "talent_roster": row["talent_roster"],
+        "status": row["status"],
+        "selected_metrics": row["selected_metrics"],
+    })
+
+
+def _get_current_stops(campaign_id: str) -> list[dict]:
+    """Latest, non-removed stop per city for a campaign -- shared by the
+    /campaign_stops route and the campaign-edit chat, which needs this same
+    current state as prompt context to reason about deltas."""
+    rows = _query(
+        f"WITH latest AS ("
+        f"  SELECT s.*, c.city_name FROM `{_DATASET}.campaign_stops` s "
+        f"  JOIN `{_DATASET}.cities` c USING (city_id) "
+        f"  WHERE s.campaign_id = @campaign_id "
+        f"  QUALIFY ROW_NUMBER() OVER (PARTITION BY s.campaign_id, s.city_id ORDER BY s.updated_at DESC) = 1"
+        f") "
+        f"SELECT city_id, city_name, stop_date, sequence_order, event_format, venue_url "
+        f"FROM latest WHERE removed IS NOT TRUE ORDER BY sequence_order",
+        [bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id)],
+    )
+    return [
+        {
+            "city_id": r["city_id"],
+            "city_name": r["city_name"],
+            "stop_date": r["stop_date"].isoformat() if r["stop_date"] else None,
+            "sequence_order": r["sequence_order"],
+            "event_format": r["event_format"],
+            "venue_url": r["venue_url"],
+        }
+        for r in rows
+    ]
+
+
 @app.get("/campaign_stops")
 def campaign_stops():
     campaign_id = request.args.get("campaign_id")
     if not campaign_id:
         return jsonify({"error": "missing required query param: campaign_id"}), 400
-    rows = _query(
-        f"SELECT s.city_id, c.city_name, s.stop_date, s.sequence_order, s.event_format, s.venue_url "
-        f"FROM `{_DATASET}.campaign_stops` s JOIN `{_DATASET}.cities` c USING (city_id) "
-        f"WHERE s.campaign_id = @campaign_id ORDER BY s.sequence_order",
-        [bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id)],
-    )
     return jsonify({
         "campaign_id": campaign_id,
-        "stops": [
-            {
-                "city_id": r["city_id"],
-                "city_name": r["city_name"],
-                "stop_date": r["stop_date"].isoformat() if r["stop_date"] else None,
-                "sequence_order": r["sequence_order"],
-                "event_format": r["event_format"],
-                "venue_url": r["venue_url"],
-            }
-            for r in rows
-        ],
+        "stops": _get_current_stops(campaign_id),
     })
+
+
+@app.post("/remove_campaign_stop")
+def remove_campaign_stop():
+    """Removing a stop from an ongoing campaign: a soft delete via a new
+    'removed' marker row, not an actual DELETE (same streaming-buffer
+    reasoning as /update_campaign) -- /campaign_stops's read query already
+    drops any city whose latest row has removed=true."""
+    payload = request.get_json(silent=True) or {}
+    campaign_id = payload.get("campaign_id")
+    city_id = payload.get("city_id")
+    if not campaign_id or not city_id:
+        return jsonify({"error": "missing required field(s): campaign_id, city_id"}), 400
+
+    row = {
+        "campaign_id": campaign_id,
+        "city_id": city_id,
+        "stop_date": None,
+        "sequence_order": None,
+        "event_format": None,
+        "venue_url": None,
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "removed": True,
+    }
+    errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.campaign_stops", [row])
+    if errors:
+        return jsonify({"error": "insert failed", "details": errors}), 500
+    return jsonify({"campaign_id": campaign_id, "city_id": city_id, "status": "removed"})
 
 
 @app.post("/campaign_stops")
 def create_campaign_stops():
+    """Adding stops (at creation or to an ongoing campaign) and changing an
+    existing stop's date are the same operation here -- inserting a new row
+    for that (campaign_id, city_id) with a fresher updated_at automatically
+    becomes the "latest" one at read time, no separate update route needed."""
     payload = request.get_json(silent=True) or {}
     campaign_id = payload.get("campaign_id")
     stops = payload.get("stops")
@@ -1695,17 +1799,31 @@ def create_campaign_stops():
             "error": f"unknown city_id(s): {', '.join(unsupported)}. Add them first via /bulk_add_cities."
         }), 400
 
-    rows = [
-        {
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # Callers that don't know the campaign's existing stop order (e.g. the
+    # edit chat's add_stops, which only proposes city_id + stop_date) omit
+    # sequence_order entirely -- append them after the current highest one
+    # instead of leaving it null, which sorted new stops first at read time.
+    next_seq = None
+    rows = []
+    for s in stops:
+        sequence_order = s.get("sequence_order")
+        if sequence_order is None:
+            if next_seq is None:
+                current = _get_current_stops(campaign_id)
+                next_seq = max((c["sequence_order"] or 0) for c in current) + 1 if current else 1
+            sequence_order = next_seq
+            next_seq += 1
+        rows.append({
             "campaign_id": campaign_id,
             "city_id": s["city_id"],
             "stop_date": s.get("stop_date"),
-            "sequence_order": s.get("sequence_order"),
+            "sequence_order": sequence_order,
             "event_format": s.get("event_format"),
+            "updated_at": now,
+            "removed": False,
             "venue_url": s.get("venue_url"),
-        }
-        for s in stops
-    ]
+        })
     errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.campaign_stops", rows)
     if errors:
         return jsonify({"error": "insert failed", "details": errors}), 500
@@ -2213,7 +2331,10 @@ def genre_recommendations():
     rows = _query(
         f"SELECT cb.city_id, AVG(cb.enthusiasm_score) AS avg_enthusiasm_score, COUNT(*) AS sample_size "
         f"FROM `{_DATASET}.city_briefs` cb "
-        f"JOIN `{_DATASET}.campaigns` c ON cb.campaign_id = c.campaign_id "
+        f"JOIN ("
+        f"  SELECT campaign_id, genre FROM `{_DATASET}.campaigns` "
+        f"  QUALIFY ROW_NUMBER() OVER (PARTITION BY campaign_id ORDER BY updated_at DESC) = 1"
+        f") c ON cb.campaign_id = c.campaign_id "
         f"WHERE c.genre = @genre AND cb.status = 'final' AND cb.enthusiasm_score IS NOT NULL "
         f"GROUP BY cb.city_id "
         f"ORDER BY avg_enthusiasm_score DESC",
@@ -2483,6 +2604,154 @@ def campaign_strategy_chat():
         "reply": result.get("reply", ""),
         "ready": bool(result.get("ready")),
         "suggested_campaign": result.get("suggested_campaign"),
+        "franchise_context": franchise_context,
+    })
+
+
+@app.post("/campaign_edit_chat")
+def campaign_edit_chat():
+    """Conversational editing for an ALREADY-EXISTING, ongoing campaign --
+    the counterpart to /campaign_strategy_chat's from-scratch drafting. The
+    model gets the campaign's real current state (title/genre/stops) as
+    context so it reasons about a delta, not a redraft; this route never
+    writes anything itself -- the frontend applies proposed_changes via
+    /update_campaign, /campaign_stops, and /remove_campaign_stop once the
+    user confirms."""
+    payload = request.get_json(silent=True) or {}
+    campaign_id = payload.get("campaign_id")
+    messages = payload.get("messages")
+    if not campaign_id or not isinstance(messages, list) or not messages:
+        return jsonify({"error": "missing required field(s): campaign_id, messages"}), 400
+
+    current = _get_latest_campaign(campaign_id)
+    if not current:
+        return jsonify({"error": f"no campaign record for campaign_id={campaign_id}"}), 404
+    current_stops = _get_current_stops(campaign_id)
+    prior_franchise_context = payload.get("franchise_context")
+
+    transcript = "\n".join(
+        f"{m.get('role', 'user').upper()}: {m.get('content', '')}" for m in messages
+    )
+
+    city_summaries = _all_city_summaries()
+    city_ids = [c["city_id"] for c in city_summaries]
+    city_geo_block = "\n".join(
+        f"- {c['city_id']}: {c['city_name']}, {c['country']} ({c['region']})" for c in city_summaries
+    )
+    stops_block = "\n".join(
+        f"- {s['city_id']} ({s['city_name']}): {s['stop_date'] or 'no date set yet'}" for s in current_stops
+    ) or "(no stops yet)"
+
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "reply": {"type": "STRING"},
+            "ready_to_apply": {"type": "BOOLEAN"},
+            "detected_title": {
+                "type": "STRING",
+                "nullable": True,
+                "description": "The new title, only if the user just asked to rename the campaign.",
+            },
+            "proposed_changes": {
+                "type": "OBJECT",
+                "nullable": True,
+                "properties": {
+                    "title": {"type": "STRING", "nullable": True},
+                    "genre": {"type": "STRING", "nullable": True},
+                    "campaign_type": {"type": "STRING", "enum": _SUPPORTED_CAMPAIGN_TYPES, "nullable": True},
+                    "talent_roster": {"type": "ARRAY", "items": {"type": "STRING"}, "nullable": True},
+                    "add_stops": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "city_id": {"type": "STRING", "enum": city_ids},
+                                "stop_date": {"type": "STRING"},
+                            },
+                            "required": ["city_id", "stop_date"],
+                        },
+                    },
+                    "remove_stop_city_ids": {"type": "ARRAY", "items": {"type": "STRING"}},
+                },
+                "required": ["add_stops", "remove_stop_city_ids"],
+            },
+        },
+        "required": ["reply", "ready_to_apply"],
+    }
+
+    def build_prompt(extra_context: str = "") -> str:
+        return (
+            "You are a helpful assistant inside a tour/press-tour marketing dashboard, "
+            "helping a campaign planner make changes to a campaign that ALREADY EXISTS and "
+            "may already be underway -- this is an edit conversation, not drafting a new "
+            "campaign from scratch.\n\n"
+            f"CURRENT CAMPAIGN STATE:\n"
+            f"Title: {current['title']}\n"
+            f"Genre: {current['genre']}\n"
+            f"Campaign type: {current['campaign_type']}\n"
+            f"Talent roster: {', '.join(current['talent_roster'] or []) or '(none set)'}\n"
+            f"Current stops:\n{stops_block}\n\n"
+            f"Supported cities, with their country and region (use these city_id values, "
+            f"nothing else):\n{city_geo_block}\n\n"
+            f"Supported campaign_type values are EXACTLY: {_SUPPORTED_CAMPAIGN_TYPES}.\n\n"
+            "The user is asking for a CHANGE to the campaign above -- adding or removing a "
+            "stop, changing the genre, updating talent, renaming it, etc. Only propose what "
+            "they actually asked to change; leave every other field in proposed_changes null "
+            "rather than restating the current value. A stop only belongs in add_stops once "
+            "BOTH its city AND a real ISO YYYY-MM-DD date are confirmed (e.g. 2026-11-10, "
+            "never a natural-language date) -- ask for a date instead of guessing one. Only "
+            "put a city_id in remove_stop_city_ids if the user clearly asked to drop it -- "
+            "never remove a stop they didn't mention. Set ready_to_apply=true only once you "
+            "have a concrete, unambiguous change to make; keep it false while still "
+            "clarifying. If a title change is proposed, also set detected_title to the new "
+            "title so it can be researched.\n\n"
+            f"CONVERSATION SO FAR:\n{transcript}{extra_context}"
+        )
+
+    try:
+        draft = _call_gemini_json(build_prompt(), schema)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini chat call failed: {e}"}), 502
+
+    result = draft
+    franchise_context = prior_franchise_context
+    detected_title = draft.get("detected_title")
+    prior_title = (prior_franchise_context or {}).get("title", "")
+    needs_research = bool(detected_title) and detected_title.strip().lower() != prior_title.strip().lower()
+
+    if needs_research:
+        try:
+            clean_title = _validate_title(detected_title)
+            search_results = _franchise_context_search(clean_title)
+            excerpt_block = "\n\n".join(
+                f"Source: {r.get('title') or r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+                for r in search_results[:6]
+            )
+            context_prompt = (
+                f'Using ONLY the search excerpts below, determine whether "{clean_title}" is a real, '
+                f"existing creative property. If the excerpts don't clearly identify one, set "
+                f"is_real_property to false and leave source_type/synopsis null -- never invent a "
+                f"premise for a title that isn't actually found. Extract only real, source-backed "
+                f"themes -- do not name any real living person.\n\n"
+                f"SEARCH EXCERPTS:\n{excerpt_block or '(no results found)'}"
+            )
+            fc = _call_gemini_json(context_prompt, _FRANCHISE_CONTEXT_SCHEMA)
+            franchise_context = {"title": clean_title, **fc}
+            fc_block = (
+                f"\n\nREAL RESEARCH ON \"{clean_title}\" (use this to inform your reply -- never invent "
+                f"beyond what's here):\nReal existing property: {fc.get('is_real_property')}\n"
+                f"Type: {fc.get('source_type')}\nSynopsis: {fc.get('synopsis')}\n"
+                f"Core themes: {', '.join(fc.get('core_themes') or [])}"
+            )
+            result = _call_gemini_json(build_prompt(fc_block), schema)
+        except (PlaceNameValidationError, parallel.APIError, RuntimeError, requests.HTTPError, KeyError, ValueError):
+            result = draft
+            franchise_context = prior_franchise_context
+
+    return jsonify({
+        "reply": result.get("reply", ""),
+        "ready_to_apply": bool(result.get("ready_to_apply")),
+        "proposed_changes": result.get("proposed_changes"),
         "franchise_context": franchise_context,
     })
 

@@ -193,3 +193,23 @@ ALTER TABLE `tour_intelligence.campaign_stops`
 
 ALTER TABLE `tour_intelligence.city_monitors`
   ADD COLUMN IF NOT EXISTS monitor_type STRING;
+
+-- Full campaign editing (title/genre/roster/stops, post-creation): an
+-- UPDATE would hit the streaming-buffer limitation on a just-inserted row
+-- (see bigquery/CLAUDE.md), so an edit is a new row, not a mutation --
+-- same insert-only "latest revision wins" pattern city_briefs already uses
+-- (QUALIFY ROW_NUMBER() ... ORDER BY updated_at DESC = 1 at read time).
+-- created_at stays frozen at the original insert across every revision;
+-- updated_at is what each new revision bumps.
+ALTER TABLE `tour_intelligence.campaigns`
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+
+-- Same pattern for stops: adding a city, changing its date, and removing it
+-- are all just a new row for that (campaign_id, city_id) with a fresher
+-- updated_at -- removal is `removed = true` on the newest row rather than
+-- an actual DELETE, which would hit the same streaming-buffer wall.
+ALTER TABLE `tour_intelligence.campaign_stops`
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
+
+ALTER TABLE `tour_intelligence.campaign_stops`
+  ADD COLUMN IF NOT EXISTS removed BOOL;

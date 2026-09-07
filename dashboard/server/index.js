@@ -247,6 +247,65 @@ app.post("/api/campaigns", async (req, res) => {
   }
 });
 
+app.post("/api/update-campaign", async (req, res) => {
+  try {
+    const result = await callTool("/update_campaign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    invalidateCache();
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/add-campaign-stops", async (req, res) => {
+  try {
+    const result = await callTool("/campaign_stops", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    invalidateCache();
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/remove-campaign-stop", async (req, res) => {
+  try {
+    const result = await callTool("/remove_campaign_stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    invalidateCache();
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/campaign-edit-chat", async (req, res) => {
+  try {
+    const result = await callTool("/campaign_edit_chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      // Same chained-calls latency reasoning as /api/campaign-strategy-chat --
+      // a turn that triggers franchise-context research fans out to several
+      // sequential Gemini/Parallel calls.
+      signal: AbortSignal.timeout(90000),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
   try {
     const { campaignId } = req.params;

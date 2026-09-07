@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist, FranchiseContext } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist, FranchiseContext, CampaignEditChatResponse, UpdatedCampaign } from "./types";
 
 // Defense in depth alongside the BFF's own callTool timeout (server/index.js)
 // -- a request that somehow hangs past this still rejects instead of leaving
@@ -194,6 +194,63 @@ export async function createCampaign(input: NewCampaignInput) {
   });
   if (!res.ok) throw new Error(`create campaign failed: ${res.status}`);
   return res.json() as Promise<{ campaign_id: string; status: string }>;
+}
+
+export async function updateCampaign(
+  campaignId: string,
+  partial: Partial<{
+    title: string;
+    genre: string;
+    campaign_type: string;
+    talent_roster: string[];
+    selected_metrics: string[];
+  }>
+) {
+  const res = await fetch("/api/update-campaign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId, ...partial }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`update campaign failed: ${res.status}`);
+  return res.json() as Promise<UpdatedCampaign>;
+}
+
+export async function addCampaignStops(campaignId: string, stops: { city_id: string; stop_date: string }[]) {
+  const res = await fetch("/api/add-campaign-stops", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId, stops }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`add campaign stops failed: ${res.status}`);
+  return res.json() as Promise<{ campaign_id: string; status: string; count: number }>;
+}
+
+export async function removeCampaignStop(campaignId: string, cityId: string) {
+  const res = await fetch("/api/remove-campaign-stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId, city_id: cityId }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`remove campaign stop failed: ${res.status}`);
+  return res.json() as Promise<{ campaign_id: string; city_id: string; status: string }>;
+}
+
+export async function chatAboutCampaignEdit(
+  campaignId: string,
+  messages: ChatMessage[],
+  franchiseContext: FranchiseContext | null = null
+) {
+  const res = await fetch("/api/campaign-edit-chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId, messages, franchise_context: franchiseContext }),
+    signal: AbortSignal.timeout(90000),
+  });
+  if (!res.ok) throw new Error(`campaign edit chat failed: ${res.status}`);
+  return res.json() as Promise<CampaignEditChatResponse>;
 }
 
 export async function chatAboutStrategy(

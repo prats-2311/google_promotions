@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Clock, MapPin, Sparkles, Loader2, AlertTriangle, Info, Lightbulb } from "lucide-react";
@@ -7,6 +7,7 @@ import { getCampaignOverview, generateBriefs, GenerationAlreadyInFlightError } f
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
 import { CueCard } from "../components/ui/CueCard";
+import { CampaignEditChat, CampaignEditChatToggle } from "../components/ui/CampaignEditChat";
 import { useCampaignContext } from "../lib/campaignContext";
 import { DashboardSkeleton } from "../components/ui/Skeletons";
 import type { CampaignInsight } from "../lib/types";
@@ -67,7 +68,9 @@ export function Dashboard() {
   const { activeCampaignId } = useCampaignContext();
   const [isGenerating, setIsGenerating] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const reduceMotion = useReducedMotion();
+  const queryClient = useQueryClient();
 
   const { data, error } = useQuery({
     queryKey: ["campaignOverview", activeCampaignId],
@@ -123,18 +126,30 @@ export function Dashboard() {
             {data.campaign.genre} · {data.cities.length} city stops · {finalCount} of {data.cities.length} briefs finalized
           </p>
         </div>
-        {hasPending && (
-          <button
-            data-tour="generate-briefs"
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-gold px-4 py-2.5 font-sans text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            {isGenerating ? "Generating briefs…" : "Generate Briefs"}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <CampaignEditChatToggle open={editOpen} onToggle={() => setEditOpen((v) => !v)} />
+          {hasPending && (
+            <button
+              data-tour="generate-briefs"
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="flex shrink-0 items-center gap-2 rounded-lg bg-gold px-4 py-2.5 font-sans text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {isGenerating ? "Generating briefs…" : "Generate Briefs"}
+            </button>
+          )}
+        </div>
       </header>
+
+      {editOpen && (
+        <CampaignEditChat
+          campaignId={activeCampaignId}
+          onClose={() => setEditOpen(false)}
+          onApplied={() => queryClient.invalidateQueries({ queryKey: ["campaignOverview", activeCampaignId] })}
+        />
+      )}
+
       {triggerError && (
         <div className="mb-6 rounded-lg border border-red-900/30 bg-red-950/20 px-3 py-2 font-sans text-[12px] text-red-200">
           Couldn't start brief generation: {triggerError}

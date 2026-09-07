@@ -6,6 +6,8 @@ not on real BigQuery behavior.
 
 import datetime
 
+import tour_data_api_main as main
+
 
 def _mock_query_result(mock_bq, rows):
     mock_bq.query.return_value.result.return_value = rows
@@ -297,6 +299,26 @@ def test_campaign_stops_post_surfaces_insert_errors_as_500(client, mock_bq):
         "stops": [{"city_id": "mumbai", "stop_date": "2026-09-01", "sequence_order": 1}],
     })
     assert res.status_code == 500
+
+
+def test_campaign_stops_post_defaults_sequence_order_when_omitted(client, mock_bq, monkeypatch):
+    # The edit chat's add_stops only proposes city_id + stop_date, never a
+    # sequence_order -- confirms a caller that omits it gets appended after
+    # the campaign's current highest sequence_order, not a null that would
+    # sort the new stop first at read time (QUALIFY ... ORDER BY sequence_order).
+    _mock_known_city_ids(mock_bq, ["mumbai", "berlin"])
+    mock_bq.insert_rows_json.return_value = []
+    monkeypatch.setattr(
+        main, "_get_current_stops",
+        lambda campaign_id: [{"city_id": "mumbai", "sequence_order": 1}, {"city_id": "london", "sequence_order": 2}],
+    )
+    res = client.post("/campaign_stops", json={
+        "campaign_id": "c1",
+        "stops": [{"city_id": "berlin", "stop_date": "2026-11-10"}],
+    })
+    assert res.status_code == 200
+    inserted_rows = mock_bq.insert_rows_json.call_args[0][1]
+    assert inserted_rows[0]["sequence_order"] == 3
 
 
 # ---- /city_briefs (GET) ----
