@@ -175,8 +175,11 @@ export async function bulkAddCities(cityNames: string[]) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ city_names: cityNames }),
     // Real Parallel Task API research for multiple cities takes longer than
-    // the default 30s budget -- give it real room rather than a false timeout.
-    signal: AbortSignal.timeout(120000),
+    // the default 30s budget -- give it real room rather than a false
+    // timeout. Matches the BFF's own signal for this route and
+    // tour_data_api's gunicorn --timeout, so no layer gives up before the
+    // others.
+    signal: AbortSignal.timeout(180000),
   });
   if (!res.ok) throw new Error(`bulk add cities failed: ${res.status}`);
   return res.json() as Promise<BulkAddCitiesResponse>;

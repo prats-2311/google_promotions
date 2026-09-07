@@ -586,6 +586,11 @@ app.post("/api/bulk-add-cities", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
+      // The default CALL_TOOL_TIMEOUT_MS (30s) is too short here: real
+      // Parallel Task API research polls for up to _TASK_RUN_MAX_POLLS *
+      // _TASK_RUN_POLL_INTERVAL_S = 60s server-side before this even
+      // returns. Matches tour_data_api's own gunicorn --timeout.
+      signal: AbortSignal.timeout(180000),
     });
     // Newly added cities must be selectable immediately (New Campaign's city
     // picker, WebMcpTools' enum) -- same reasoning as campaign creation's
