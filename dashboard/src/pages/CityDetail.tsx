@@ -799,7 +799,7 @@ export function CityDetail() {
           />
           <StatTile
             label="Artist Fit"
-            value={data.fanSignal.artist_type}
+            value={data.fanSignal.artist_type.replace(/_/g, " ")}
             hint={`${data.campaign.genre} audience match`}
             icon={<Clapperboard size={13} />}
           />
