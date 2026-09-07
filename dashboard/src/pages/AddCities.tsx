@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Globe2, Loader2, Sparkles } from "lucide-react";
@@ -17,6 +17,36 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
+// Real phases of what /bulk_add_cities actually does server-side (see its
+// docstring in cloud_run/tour_data_api/main.py) -- not a fake progress bar.
+// There's no server push to know exactly which phase is active right now
+// (that would need real streaming plumbing this app doesn't have), so this
+// just cycles through the genuine steps on a timer while the request is in
+// flight, honest about the KIND of work happening without claiming to show
+// literal live search results.
+const RESEARCH_PHASES = [
+  "Creating a Parallel research task…",
+  "Researching region, country, and primary language…",
+  "Cross-checking timezone and details…",
+  "Almost there — saving to your city library…",
+] as const;
+const RESEARCH_PHASE_INTERVAL_MS = 5000;
+
+function useResearchPhase(active: boolean): string {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setPhase(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setPhase((p) => Math.min(p + 1, RESEARCH_PHASES.length - 1));
+    }, RESEARCH_PHASE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [active]);
+  return RESEARCH_PHASES[phase];
+}
+
 export function AddCities() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["cities"], queryFn: listCities });
@@ -24,6 +54,7 @@ export function AddCities() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkAddCitiesResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const researchPhase = useResearchPhase(submitting);
 
   const cityNames = input
     .split(/[,\n]/)
@@ -86,6 +117,13 @@ export function AddCities() {
             ? `Researching ${cityNames.length} ${cityNames.length === 1 ? "city" : "cities"}…`
             : `Research & Add ${cityNames.length > 0 ? cityNames.length : ""} ${cityNames.length === 1 ? "City" : "Cities"}`}
         </button>
+
+        {submitting && (
+          <p className="mt-3 flex items-center gap-1.5 font-sans text-[12px] text-ink-muted">
+            <Loader2 size={11} className="animate-spin shrink-0" />
+            {researchPhase} This is real research, not a placeholder — it can take up to a couple of minutes.
+          </p>
+        )}
 
         {result && (
           <div className="mt-5 space-y-3 border-t border-line pt-4">
