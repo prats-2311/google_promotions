@@ -300,6 +300,21 @@ def _all_city_ids() -> list[str]:
     return [r["city_id"] for r in rows]
 
 
+def _all_city_summaries() -> list[dict]:
+    """Like _all_city_ids() but with the country/region the strategy chat
+    actually needs -- a bare id list can't support a user describing a
+    theme ('one stop per continent') instead of exact city names, since the
+    model has no way to know which supported city is on which continent
+    from an id string alone."""
+    rows = _query(
+        f"SELECT city_id, city_name, country, region FROM `{_DATASET}.cities` ORDER BY city_id", []
+    )
+    return [
+        {"city_id": r["city_id"], "city_name": r["city_name"], "country": r["country"], "region": r["region"]}
+        for r in rows
+    ]
+
+
 def _pcm_to_wav_bytes(pcm_bytes: bytes, sample_rate: int) -> bytes:
     """Gemini's TTS response is raw 16-bit mono PCM with no container --
     unplayable directly in a browser <audio> element. Wraps it in a minimal
@@ -2216,6 +2231,12 @@ def campaign_strategy_chat():
         if strategy_text else ""
     )
 
+    city_summaries = _all_city_summaries()
+    city_ids = [c["city_id"] for c in city_summaries]
+    city_geo_block = "\n".join(
+        f"- {c['city_id']}: {c['city_name']}, {c['country']} ({c['region']})" for c in city_summaries
+    )
+
     schema = {
         "type": "OBJECT",
         "properties": {
@@ -2234,7 +2255,7 @@ def campaign_strategy_chat():
                         "items": {
                             "type": "OBJECT",
                             "properties": {
-                                "city_id": {"type": "STRING", "enum": _all_city_ids()},
+                                "city_id": {"type": "STRING", "enum": city_ids},
                                 "stop_date": {"type": "STRING"},
                             },
                             "required": ["city_id", "stop_date"],
@@ -2251,14 +2272,26 @@ def campaign_strategy_chat():
         "You are a helpful campaign-planning assistant inside a tour/press-tour "
         "marketing dashboard, helping a user turn an existing strategy (if any) "
         "or a rough idea into a structured campaign.\n\n"
-        f"Supported cities are EXACTLY (use these city_id values, nothing else): "
-        f"{_all_city_ids()}.\n"
+        f"Supported cities, with their country and region (use these city_id "
+        f"values, nothing else):\n{city_geo_block}\n\n"
         f"Supported campaign_type values are EXACTLY: {_SUPPORTED_CAMPAIGN_TYPES}.\n\n"
-        "Ask clarifying questions in `reply` if you don't yet know the title, "
-        "campaign type, genre, and at least one city stop with a date. Only set "
-        "ready=true and populate suggested_campaign once you have enough to "
-        "propose a real campaign — never suggest a city_id outside the supported "
-        "list above, and never invent a stop_date; ask for one instead.\n\n"
+        "The user may describe a theme or vibe rather than exact cities and "
+        "dates -- 'one stop per continent', 'wherever this genre is popular', "
+        "'somewhere with a big theater-going fan base'. Don't just reply with "
+        "a bare list of supported cities and ask them to pick -- use the "
+        "country/region info above to actively propose a specific, named "
+        "shortlist that fits what they described (e.g. for 'one stop per "
+        "continent', name one specific supported city per distinct region "
+        "represented above), and say so in `reply`. Engage with the creative "
+        "pitch itself before pivoting to logistics -- a one-line acknowledgment "
+        "of their idea reads a lot better than jumping straight to a checklist.\n\n"
+        "Still ask clarifying questions in `reply` if you don't yet know the "
+        "title, campaign type, genre, and at least one city stop with a date "
+        "-- but propose concrete options rather than only asking open questions "
+        "once you know enough about the theme to do so. Only set ready=true and "
+        "populate suggested_campaign once you have enough to propose a real "
+        "campaign — never suggest a city_id outside the supported list above, "
+        "and never invent a stop_date; ask for one instead.\n\n"
         f"CONVERSATION SO FAR:\n{transcript}{strategy_block}"
     )
 
