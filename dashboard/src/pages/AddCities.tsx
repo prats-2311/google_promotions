@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Globe2, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Globe2, Loader2, Sparkles, MapPin } from "lucide-react";
 import { bulkAddCities, listCities } from "../lib/api";
 import type { BulkAddCitiesResponse } from "../lib/types";
 
@@ -81,14 +81,20 @@ export function AddCities() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link to="/" className="mb-6 flex items-center gap-1.5 font-sans text-[13px] text-canvas-muted hover:text-canvas-text">
-        <ArrowLeft size={14} /> Back to campaign
+      <Link
+        to="/"
+        className="mb-6 inline-flex items-center gap-1.5 rounded font-sans text-[13px] text-canvas-muted outline-none transition-colors hover:text-canvas-text focus-visible:ring-2 focus-visible:ring-gold"
+      >
+        <ArrowLeft size={14} aria-hidden /> Back to campaign
       </Link>
 
       <header className="mb-8">
-        <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Expand Coverage</p>
-        <h1 className="mt-1 font-display text-[30px] text-canvas-text">Add Cities</h1>
-        <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
+        <div className="flex items-center gap-2">
+          <span className="inline-block size-1.5 rounded-full bg-gold" aria-hidden />
+          <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Expand Coverage</p>
+        </div>
+        <h1 className="mt-1.5 text-balance font-display text-[38px] leading-none text-canvas-text">Add Cities</h1>
+        <p className="mt-2 font-sans text-[13px] text-canvas-muted">
           Real Parallel Task API research per city — region, country, primary language, and timezone, not a bare
           placeholder row. New cities become selectable in New Campaign as soon as research finishes.
         </p>
@@ -101,7 +107,8 @@ export function AddCities() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={"Seoul\nBerlin\nLagos"}
             rows={4}
-            className="w-full resize-none rounded-lg border border-line bg-paper-raised px-3 py-2 font-sans text-[13px] text-ink outline-none focus:border-ink/30"
+            spellCheck={false}
+            className="w-full resize-none rounded-lg border border-line bg-paper-raised px-3 py-2 font-sans text-[13px] text-ink outline-none transition-colors focus:border-ink/30 focus-visible:ring-2 focus-visible:ring-ink/20"
           />
         </Field>
 
@@ -110,17 +117,19 @@ export function AddCities() {
         <button
           type="submit"
           disabled={cityNames.length === 0 || submitting}
-          className="mt-4 flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-paper transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="mt-4 flex items-center gap-2 rounded-lg bg-ink px-4 py-2.5 font-sans text-[13px] font-medium text-paper outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink/40 focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {submitting ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
           {submitting
             ? `Researching ${cityNames.length} ${cityNames.length === 1 ? "city" : "cities"}…`
-            : `Research & Add ${cityNames.length > 0 ? cityNames.length : ""} ${cityNames.length === 1 ? "City" : "Cities"}`}
+            : cityNames.length > 0
+              ? `Research & Add ${cityNames.length} ${cityNames.length === 1 ? "City" : "Cities"}`
+              : "Research & Add Cities"}
         </button>
 
         {submitting && (
-          <p className="mt-3 flex items-center gap-1.5 font-sans text-[12px] text-ink-muted">
-            <Loader2 size={11} className="animate-spin shrink-0" />
+          <p className="mt-3 flex items-center gap-1.5 font-sans text-[12px] text-ink-muted" aria-live="polite">
+            <Loader2 size={11} className="animate-spin shrink-0" aria-hidden />
             {researchPhase} This is real research, not a placeholder — it can take up to a couple of minutes.
           </p>
         )}
@@ -138,7 +147,7 @@ export function AddCities() {
                       key={id}
                       className="flex items-center gap-1 rounded-full border border-emerald-700/30 bg-emerald-700/10 px-2.5 py-1 font-sans text-[11px] text-emerald-800"
                     >
-                      <Check size={11} /> {id}
+                      <Check size={11} aria-hidden /> {id}
                     </span>
                   ))}
                 </div>
@@ -166,21 +175,33 @@ export function AddCities() {
       </form>
 
       <div className="mt-6 rounded-2xl bg-paper p-6">
-        <div className="mb-3 flex items-center gap-2">
-          <Globe2 size={14} className="text-ink-muted" />
-          <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
-            All Cities ({data?.cities.length ?? (isLoading ? "…" : 0)})
-          </p>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Globe2 size={14} className="text-ink-muted" aria-hidden />
+            <p className="font-display text-[13px] uppercase tracking-[0.08em] text-ink">City Library</p>
+          </div>
+          <span className="rounded-full bg-black/5 px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-ink-muted">
+            {data?.cities.length ?? (isLoading ? "…" : 0)}
+          </span>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {data?.cities.map((city) => (
-            <div key={city.city_id} className="flex items-baseline justify-between gap-2 border-b border-line py-1.5">
-              <span className="font-sans text-[13px] text-ink">{city.city_name}</span>
-              <span className="truncate font-sans text-[11px] text-ink-muted">
-                {[city.country, city.region].filter(Boolean).join(" · ")}
-              </span>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+          {data?.cities.map((city) => {
+            const location = [city.country, city.region].filter(Boolean).join(" · ");
+            return (
+              <div
+                key={city.city_id}
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-black/[0.025]"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <MapPin size={12} className="shrink-0 text-ink-muted/60" aria-hidden />
+                  <span className="truncate font-sans text-[13px] text-ink">{city.city_name}</span>
+                </span>
+                {location && (
+                  <span className="truncate font-sans text-[11px] text-ink-muted">{location}</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
