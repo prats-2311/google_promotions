@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check, ExternalLink, Loader2, Search, TrendingUp } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Loader2, Search, TrendingUp, CheckCircle2 } from "lucide-react";
 import { createCampaign, discoverVenues, getGenreRecommendations, listCities } from "../lib/api";
 import { useCampaignContext } from "../lib/campaignContext";
 import { cityAccentOnPaper } from "../lib/cityTheme";
@@ -321,6 +321,15 @@ export function NewCampaign() {
     stops.length > 0 &&
     stops.every((s) => s.stop_date.length > 0);
 
+  // What's still missing, in plain language -- so a disabled Create button
+  // explains itself instead of just sitting greyed out with no reason.
+  const undatedStops = stops.filter((s) => !s.stop_date).length;
+  const missing: string[] = [];
+  if (!title.trim()) missing.push("Name the campaign");
+  if (!genre.trim()) missing.push("Set a genre");
+  if (stops.length === 0) missing.push("Select at least one city stop");
+  if (undatedStops > 0) missing.push(`Pick a date for ${undatedStops} selected ${undatedStops === 1 ? "stop" : "stops"}`);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || submitting) return;
@@ -359,14 +368,20 @@ export function NewCampaign() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link to="/" className="mb-6 flex items-center gap-1.5 font-sans text-[13px] text-canvas-muted hover:text-canvas-text">
-        <ArrowLeft size={14} /> Back to campaign
+      <Link
+        to="/"
+        className="mb-6 inline-flex items-center gap-1.5 rounded font-sans text-[13px] text-canvas-muted outline-none transition-colors hover:text-canvas-text focus-visible:ring-2 focus-visible:ring-gold"
+      >
+        <ArrowLeft size={14} aria-hidden /> Back to campaign
       </Link>
 
       <header className="mb-8">
-        <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Set up a tour</p>
-        <h1 className="mt-1 font-display text-[30px] text-canvas-text">New Campaign</h1>
-        <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
+        <div className="flex items-center gap-2">
+          <span className="inline-block size-1.5 rounded-full bg-gold" aria-hidden />
+          <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Set up a tour</p>
+        </div>
+        <h1 className="mt-1.5 text-balance font-display text-[38px] leading-none text-canvas-text">New Campaign</h1>
+        <p className="mt-2 font-sans text-[13px] text-canvas-muted">
           {cities.length > 0 ? (
             <>
               Stops can be any of the {cities.length} known cities — need one that's missing?{" "}
@@ -384,6 +399,7 @@ export function NewCampaign() {
       <StrategyChat onSuggestion={applySuggestion} />
 
       <form onSubmit={handleSubmit} className="rounded-2xl bg-paper p-6">
+        <SectionHeader index={1} title="Campaign Details" hint="What is this tour, and who's on it?" />
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <Field label="Campaign Title">
             <input
@@ -425,10 +441,14 @@ export function NewCampaign() {
           </Field>
         </div>
 
-        <div className="mt-6">
-          <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
-            City Stops
-          </p>
+        <div className="mt-8 border-t border-line pt-6">
+          <SectionHeader
+            index={2}
+            title="City Stops"
+            hint={stops.length > 0
+              ? `${stops.length} selected · ${stops.length - undatedStops} dated`
+              : "Pick the cities this tour will visit and set each date."}
+          />
           <div className="space-y-2">
             {cities.map((city) => {
               const stop = stops.find((s) => s.city_id === city.city_id);
@@ -445,7 +465,8 @@ export function NewCampaign() {
                     <button
                       type="button"
                       onClick={() => toggleCity(city.city_id)}
-                      className="flex flex-1 items-center gap-2.5 text-left"
+                      aria-pressed={selected}
+                      className="flex flex-1 items-center gap-2.5 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-ink/40"
                     >
                       <span
                         className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border"
@@ -489,13 +510,12 @@ export function NewCampaign() {
           </div>
         </div>
 
-        <div className="mt-6">
-          <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
-            Key Metrics to Consider
-          </p>
-          <p className="mb-2 font-sans text-[12px] text-ink-muted">
-            Fetched for each city stop — from curated data when available, live web search otherwise.
-          </p>
+        <div className="mt-8 border-t border-line pt-6">
+          <SectionHeader
+            index={3}
+            title="Key Metrics to Consider"
+            hint="Fetched for each city stop — curated data when available, live web search otherwise."
+          />
           <div className="flex flex-wrap gap-2">
             {METRIC_OPTIONS.map((metric) => {
               const selected = selectedMetrics.includes(metric.key);
@@ -504,7 +524,8 @@ export function NewCampaign() {
                   key={metric.key}
                   type="button"
                   onClick={() => toggleMetric(metric.key)}
-                  className={`rounded-full border px-3 py-1.5 font-sans text-[12px] transition-colors ${
+                  aria-pressed={selected}
+                  className={`rounded-full border px-3 py-1.5 font-sans text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40 ${
                     selected
                       ? "border-gold bg-gold/15 text-ink"
                       : "border-line bg-paper-raised text-ink-muted hover:text-ink"
@@ -523,15 +544,50 @@ export function NewCampaign() {
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={!canSubmit || submitting}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-gold px-4 py-2.5 font-sans text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {submitting && <Loader2 size={14} className="animate-spin" />}
-          {submitting ? "Creating…" : "Create Campaign"}
-        </button>
+        <div className="mt-8 border-t border-line pt-5">
+          {/* Explain a disabled Create button instead of leaving it silently
+              greyed out -- a live checklist of what's still required. */}
+          {missing.length > 0 ? (
+            <ul className="mb-3 space-y-1" aria-label="Steps still needed before creating">
+              {missing.map((m) => (
+                <li key={m} className="flex items-center gap-2 font-sans text-[12px] text-ink-muted">
+                  <span className="size-1.5 shrink-0 rounded-full bg-ink-muted" aria-hidden />
+                  {m}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mb-3 flex items-center gap-1.5 font-sans text-[12px] font-medium text-emerald-700">
+              <CheckCircle2 size={13} aria-hidden /> Ready to launch — {stops.length}{" "}
+              {stops.length === 1 ? "stop" : "stops"} set.
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={!canSubmit || submitting}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gold px-4 py-2.5 font-sans text-[13px] font-semibold text-ink outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {submitting && <Loader2 size={14} className="animate-spin" aria-hidden />}
+            {submitting ? "Creating…" : "Create Campaign"}
+          </button>
+        </div>
       </form>
+    </div>
+  );
+}
+
+// Setting up a campaign is a genuine sequence (details → stops → metrics →
+// create), so a numbered step marker here encodes real order, not decoration.
+function SectionHeader({ index, title, hint }: { index: number; title: string; hint?: string }) {
+  return (
+    <div className="mb-3 flex items-baseline gap-2.5">
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ink font-mono text-[11px] font-semibold tabular-nums text-paper">
+        {index}
+      </span>
+      <div>
+        <p className="font-display text-[13px] uppercase tracking-[0.08em] text-ink">{title}</p>
+        {hint && <p className="mt-0.5 font-sans text-[12px] text-ink-muted">{hint}</p>}
+      </div>
     </div>
   );
 }
