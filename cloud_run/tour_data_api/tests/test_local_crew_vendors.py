@@ -57,6 +57,17 @@ def test_discovers_and_synthesizes_vendor_list(client, mock_parallel_client, mon
     assert len(body["citations"]) == 1
 
 
+def test_response_includes_the_real_search_queries_used(client, mock_parallel_client, monkeypatch):
+    mock_parallel_client.search.return_value = _fake_search_result()
+    monkeypatch.setattr(main, "_call_gemini_json", _default_synthesis)
+
+    res = client.post("/local_crew_vendors", json={"city_name": "Nairobi"})
+
+    body = res.get_json()
+    assert "search_queries_used" in body
+    assert any("Nairobi" in q for q in body["search_queries_used"])
+
+
 def test_returns_empty_list_when_no_search_results(client, mock_parallel_client):
     mock_result = MagicMock()
     mock_result.results = []

@@ -58,6 +58,19 @@ def test_discovers_and_synthesizes_visa_info(client, mock_parallel_client, monke
     assert len(body["citations"]) == 1
 
 
+def test_response_includes_the_real_search_queries_used(client, mock_parallel_client, monkeypatch):
+    mock_parallel_client.search.return_value = _fake_search_result()
+    monkeypatch.setattr(main, "_call_gemini_json", _default_synthesis)
+
+    res = client.post("/visa_requirements", json={
+        "artist_nationality": "Canadian", "destination_country": "United States",
+    })
+
+    body = res.get_json()
+    assert "search_queries_used" in body
+    assert any("Canadian" in q for q in body["search_queries_used"])
+
+
 def test_returns_low_confidence_when_no_search_results(client, mock_parallel_client):
     mock_result = MagicMock()
     mock_result.results = []

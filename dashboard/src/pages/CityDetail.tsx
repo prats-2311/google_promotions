@@ -332,6 +332,19 @@ function StopOutcomeCheck({
 // Local production ecosystem: a city-level reference fact with no curated
 // seed data, purely on-demand (no persistence) -- staging/lighting/sound
 // rental, catering, and local labor/union requirements for touring crew.
+// Parallel's own Search API response never echoes back the objective/
+// search_queries it was given -- the caller already knows what it sent, and
+// we already construct these server-side in each _xxx_search() helper, so
+// this just surfaces our own real values rather than a frontend guess.
+function SearchedForLine({ queries }: { queries: string[] | undefined }) {
+  if (!queries || queries.length === 0) return null;
+  return (
+    <p className="mt-2 font-mono text-[10.5px] leading-relaxed text-ink-muted/80">
+      Searched: {queries.join(" · ")}
+    </p>
+  );
+}
+
 function LocalCrewVendorsCard({ cityName, accent }: { cityName: string; accent: string }) {
   const [result, setResult] = useState<LocalCrewVendorsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -410,6 +423,7 @@ function LocalCrewVendorsCard({ cityName, accent }: { cityName: string; accent: 
           ))}
         </div>
       )}
+      {result && <SearchedForLine queries={result.search_queries_used} />}
     </div>
   );
 }
@@ -492,6 +506,7 @@ function VisaRequirementsCard({ accent }: { accent: string }) {
               ))}
             </div>
           )}
+          <SearchedForLine queries={result.search_queries_used} />
         </div>
       )}
     </div>
@@ -572,6 +587,7 @@ function SeasonalWeatherRiskCard({ cityName, accent }: { cityName: string; accen
               ))}
             </div>
           )}
+          <SearchedForLine queries={result.search_queries_used} />
         </div>
       )}
     </div>

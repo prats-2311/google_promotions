@@ -53,6 +53,21 @@ def test_discovers_and_synthesizes_weather_risk(client, mock_parallel_client, mo
     assert len(body["citations"]) == 1
 
 
+def test_response_includes_the_real_search_queries_used(client, mock_parallel_client, monkeypatch):
+    """The UI shows this while/after the search so the user sees what was
+    actually searched for, not just a spinner -- must be the real queries
+    sent to Parallel, not a frontend-guessed approximation."""
+    mock_parallel_client.search.return_value = _fake_search_result()
+    monkeypatch.setattr(main, "_call_gemini_json", _default_synthesis)
+
+    res = client.post("/seasonal_weather_risk", json={"city_name": "Mumbai", "month_or_date": "July"})
+
+    body = res.get_json()
+    assert "search_queries_used" in body
+    assert any("Mumbai" in q for q in body["search_queries_used"])
+    assert any("July" in q for q in body["search_queries_used"])
+
+
 def test_returns_low_confidence_when_no_search_results(client, mock_parallel_client):
     mock_result = MagicMock()
     mock_result.results = []

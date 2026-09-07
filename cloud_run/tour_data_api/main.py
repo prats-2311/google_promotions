@@ -45,7 +45,16 @@ _SEED_CITY_IDS = {"mumbai", "london", "tokyo", "sao_paulo", "new_york"}
 
 _GCP_PROJECT = os.environ.get("GCP_PROJECT", "liifecalling-academy")
 _VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "us-central1")
-_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# gemini-3.8-flash (GA 2026-09-02) -- confirmed live via a direct generateContent
+# call before switching, since the previous default (gemini-2.5-flash) still
+# works but is being phased out behind the 3.x line, and the immediately-prior
+# fallback (gemini-2.0-flash) had ALREADY been shut down by Google on
+# 2026-06-01 -- confirmed via a real 404 -- so it was silently dead the whole
+# time despite never having actually needed to fire. gemini-3.8-flash and
+# gemini-2.5-flash (the new fallback) both only resolve on the GLOBAL Vertex AI
+# endpoint, not the regional us-central1 one this service otherwise uses --
+# see _call_gemini_json's endpoint construction.
+_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 # Same-bar fallback: a transient overload on the primary model shouldn't take
 # down every live-search/synthesis route. GEMINI_FALLBACK_MODEL is only ever
 # reached after the primary has been retried once and still failed with a
@@ -53,7 +62,7 @@ _GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 # _validate_gemini_response gate before being accepted, so the fallback path
 # never gets a lower quality bar than the primary just because it's the
 # backup. See _call_gemini_json.
-_GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash")
+_GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
 _GEMINI_RETRYABLE_STATUS_CODES = {429, 503}
 _PARALLEL_API_KEY = os.environ.get("PARALLEL_API_KEY")
 # The Parallel partner-track requirement names three qualifying integration
@@ -217,9 +226,15 @@ def _demographics_search(city_name: str, country: str | None) -> list[dict]:
 
 
 def _gemini_request(model: str, prompt: str, response_schema: dict) -> dict:
+    # gemini-3.8-flash and gemini-2.5-flash (this service's text-synthesis
+    # models) only resolve on the GLOBAL Vertex AI endpoint -- confirmed via a
+    # direct call, a regional us-central1 request 404s with "Publisher model
+    # ... was not found". Deliberately hardcoded, not _VERTEX_LOCATION, since
+    # the TTS and image models elsewhere in this file still use the regional
+    # endpoint and haven't been verified against global.
     url = (
-        f"https://{_VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
-        f"{_GCP_PROJECT}/locations/{_VERTEX_LOCATION}/publishers/google/models/"
+        f"https://aiplatform.googleapis.com/v1/projects/"
+        f"{_GCP_PROJECT}/locations/global/publishers/google/models/"
         f"{model}:generateContent"
     )
     res = requests.post(
@@ -892,24 +907,25 @@ def live_city_demographics_search():
     })
 
 
-def _seasonal_weather_search(city_name: str, country: str | None, month_or_date: str) -> list[dict]:
+def _seasonal_weather_search(city_name: str, country: str | None, month_or_date: str) -> tuple[list[dict], list[str]]:
     if not _parallel_client:
         raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
     place = f"{city_name}, {country}" if country else city_name
+    queries = [
+        f"{place} weather {month_or_date}",
+        f"{place} monsoon hurricane season {month_or_date}",
+        f"{place} extreme weather risk outdoor events",
+    ]
     search = _parallel_client.search(
         objective=(
             f"Typical seasonal weather risk (monsoon, hurricane/cyclone season, extreme heat, heavy "
             f"rain, or other severe weather) in {place} during {month_or_date}, relevant to a touring "
             f"musician or actor's large outdoor event."
         ),
-        search_queries=[
-            f"{place} weather {month_or_date}",
-            f"{place} monsoon hurricane season {month_or_date}",
-            f"{place} extreme weather risk outdoor events",
-        ],
+        search_queries=queries,
         mode="advanced",
     )
-    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results], queries
 
 
 _SEASONAL_WEATHER_RISK_SCHEMA = {
@@ -948,7 +964,7 @@ def seasonal_weather_risk():
         return jsonify({"error": str(e)}), 400
 
     try:
-        results = _seasonal_weather_search(city_name, country, month_or_date)
+        results, queries_used = _seasonal_weather_search(city_name, country, month_or_date)
     except parallel.APIError as e:
         return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
     except RuntimeError as e:
@@ -957,7 +973,7 @@ def seasonal_weather_risk():
     if not results:
         return jsonify({
             "source": "parallel_live", "risk_level": None, "notes": None,
-            "confidence": "low", "citations": [],
+            "confidence": "low", "citations": [], "search_queries_used": queries_used,
         })
 
     excerpt_block = "\n\n".join(
@@ -981,31 +997,33 @@ def seasonal_weather_risk():
     return jsonify({
         "source": "parallel_live",
         "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        "search_queries_used": queries_used,
         **synthesized,
     })
 
 
 def _venue_discovery_search(
     city_name: str, country: str | None, capacity_hint: str | None, format_hint: str | None
-) -> list[dict]:
+) -> tuple[list[dict], list[str]]:
     if not _parallel_client:
         raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
     place = f"{city_name}, {country}" if country else city_name
     format_clause = f" suitable for {format_hint}" if format_hint else ""
     capacity_clause = f" with capacity around {capacity_hint}" if capacity_hint else ""
+    queries = [
+        f"{place} major concert venues",
+        f"{place} arenas stadiums capacity",
+        f"{place} theaters live events",
+    ]
     search = _parallel_client.search(
         objective=(
             f"Real concert venues, arenas, stadiums, or theaters in {place}{format_clause}"
             f"{capacity_clause}, suitable for a touring musician or actor's live event."
         ),
-        search_queries=[
-            f"{place} major concert venues",
-            f"{place} arenas stadiums capacity",
-            f"{place} theaters live events",
-        ],
+        search_queries=queries,
         mode="advanced",
     )
-    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results], queries
 
 
 _VENUE_DISCOVERY_SCHEMA = {
@@ -1053,14 +1071,16 @@ def discover_venues():
         return jsonify({"error": str(e)}), 400
 
     try:
-        results = _venue_discovery_search(city_name, country, capacity_hint, format_hint)
+        results, queries_used = _venue_discovery_search(city_name, country, capacity_hint, format_hint)
     except parallel.APIError as e:
         return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
     if not results:
-        return jsonify({"source": "parallel_live", "venues": [], "citations": []})
+        return jsonify({
+            "source": "parallel_live", "venues": [], "citations": [], "search_queries_used": queries_used,
+        })
 
     excerpt_block = "\n\n".join(
         f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
@@ -1083,28 +1103,30 @@ def discover_venues():
     return jsonify({
         "source": "parallel_live",
         "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        "search_queries_used": queries_used,
         **synthesized,
     })
 
 
-def _local_crew_vendor_search(city_name: str, country: str | None) -> list[dict]:
+def _local_crew_vendor_search(city_name: str, country: str | None) -> tuple[list[dict], list[str]]:
     if not _parallel_client:
         raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
     place = f"{city_name}, {country}" if country else city_name
+    queries = [
+        f"{place} staging lighting sound rental",
+        f"{place} event production companies",
+        f"{place} concert crew labor union",
+    ]
     search = _parallel_client.search(
         objective=(
             f"Local production companies in {place} for staging, lighting, and sound rental, plus "
             f"catering options and any local labor/union requirements for touring crew, relevant to "
             f"a live musician or actor's event."
         ),
-        search_queries=[
-            f"{place} staging lighting sound rental",
-            f"{place} event production companies",
-            f"{place} concert crew labor union",
-        ],
+        search_queries=queries,
         mode="advanced",
     )
-    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results], queries
 
 
 _LOCAL_CREW_VENDORS_SCHEMA = {
@@ -1152,14 +1174,17 @@ def local_crew_vendors():
         return jsonify({"error": str(e)}), 400
 
     try:
-        results = _local_crew_vendor_search(city_name, country)
+        results, queries_used = _local_crew_vendor_search(city_name, country)
     except parallel.APIError as e:
         return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
 
     if not results:
-        return jsonify({"source": "parallel_live", "vendors": [], "labor_notes": None, "citations": []})
+        return jsonify({
+            "source": "parallel_live", "vendors": [], "labor_notes": None, "citations": [],
+            "search_queries_used": queries_used,
+        })
 
     excerpt_block = "\n\n".join(
         f"Source: {r.get('title') or r.get('url')}\nURL: {r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
@@ -1182,26 +1207,28 @@ def local_crew_vendors():
     return jsonify({
         "source": "parallel_live",
         "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        "search_queries_used": queries_used,
         **synthesized,
     })
 
 
-def _visa_requirements_search(artist_nationality: str, destination_country: str) -> list[dict]:
+def _visa_requirements_search(artist_nationality: str, destination_country: str) -> tuple[list[dict], list[str]]:
     if not _parallel_client:
         raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    queries = [
+        f"{artist_nationality} artist visa {destination_country}",
+        f"{destination_country} performer visa processing time",
+        f"{destination_country} touring musician visa requirements",
+    ]
     search = _parallel_client.search(
         objective=(
             f"The typical visa category and processing lead time for a {artist_nationality} touring "
             f"musician or actor performing in {destination_country}, for tour scheduling risk planning."
         ),
-        search_queries=[
-            f"{artist_nationality} artist visa {destination_country}",
-            f"{destination_country} performer visa processing time",
-            f"{destination_country} touring musician visa requirements",
-        ],
+        search_queries=queries,
         mode="advanced",
     )
-    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results], queries
 
 
 _VISA_REQUIREMENTS_SCHEMA = {
@@ -1239,7 +1266,7 @@ def visa_requirements():
         return jsonify({"error": str(e)}), 400
 
     try:
-        results = _visa_requirements_search(artist_nationality, destination_country)
+        results, queries_used = _visa_requirements_search(artist_nationality, destination_country)
     except parallel.APIError as e:
         return jsonify({"error": f"Parallel Search API call failed: {e}"}), 502
     except RuntimeError as e:
@@ -1253,6 +1280,7 @@ def visa_requirements():
             "notes": None,
             "confidence": "low",
             "citations": [],
+            "search_queries_used": queries_used,
         })
 
     excerpt_block = "\n\n".join(
@@ -1276,6 +1304,7 @@ def visa_requirements():
     return jsonify({
         "source": "parallel_live",
         "citations": [{"url": r.get("url"), "title": r.get("title")} for r in results[:8]],
+        "search_queries_used": queries_used,
         **synthesized,
     })
 
@@ -2337,7 +2366,10 @@ def campaign_strategy_chat():
                             "type": "OBJECT",
                             "properties": {
                                 "city_id": {"type": "STRING", "enum": city_ids},
-                                "stop_date": {"type": "STRING"},
+                                "stop_date": {
+                                    "type": "STRING",
+                                    "description": "Strict ISO format YYYY-MM-DD, e.g. 2026-11-10 -- never a natural-language date like 'November 10th'.",
+                                },
                             },
                             "required": ["city_id", "stop_date"],
                         },
@@ -2379,8 +2411,11 @@ def campaign_strategy_chat():
             "has no empty option). Only include a stop in `stops` once BOTH its "
             "city AND a real date are confirmed -- a city mentioned without a "
             "date yet doesn't belong in `stops`, and never invent a stop_date; ask "
-            "for one instead. If the user drops or replaces a previously-discussed "
-            "city, stop including it in `stops` on the next reply.\n\n"
+            "for one instead. Always write stop_date as strict ISO YYYY-MM-DD "
+            "(e.g. 2026-11-10) even if the user wrote it differently ('Nov 10th', "
+            "'10/11') -- the form's date input can't parse anything else. If the "
+            "user drops or replaces a previously-discussed city, stop including "
+            "it in `stops` on the next reply.\n\n"
             "Still ask clarifying questions in `reply` if you don't yet know the "
             "title, campaign type, genre, and at least one city stop with a date "
             "-- but propose concrete options rather than only asking open questions "

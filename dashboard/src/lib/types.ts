@@ -156,6 +156,7 @@ export interface StopSafetyChecklist {
 export interface VisaRequirements {
   source: "parallel_live";
   citations: MonitorCitation[];
+  search_queries_used: string[];
   visa_type: string | null;
   typical_lead_time_weeks: number | null;
   notes: string | null;
@@ -165,6 +166,7 @@ export interface VisaRequirements {
 export interface SeasonalWeatherRisk {
   source: "parallel_live";
   citations: MonitorCitation[];
+  search_queries_used: string[];
   risk_level: "high" | "medium" | "low" | null;
   notes: string | null;
   confidence: "high" | "medium" | "low";
@@ -200,6 +202,7 @@ export interface VenueDiscoveryResponse {
   source: string;
   venues: DiscoveredVenue[];
   citations: MonitorCitation[];
+  search_queries_used: string[];
 }
 
 export interface LocalVendor {
@@ -214,6 +217,7 @@ export interface LocalCrewVendorsResponse {
   vendors: LocalVendor[];
   labor_notes: string | null;
   citations: MonitorCitation[];
+  search_queries_used: string[];
 }
 
 export interface City {

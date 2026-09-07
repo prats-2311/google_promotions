@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Check, Loader2, Search, TrendingUp } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Loader2, Search, TrendingUp } from "lucide-react";
 import { createCampaign, discoverVenues, getGenreRecommendations, listCities } from "../lib/api";
 import { useCampaignContext } from "../lib/campaignContext";
 import { cityAccentOnPaper } from "../lib/cityTheme";
@@ -87,6 +87,20 @@ function formatStopDate(iso: string): string {
   return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 }
 
+// The native <input type="date"> silently shows empty for anything that
+// isn't exactly this shape, and formatStopDate above renders "Invalid
+// Date" for the same input -- the strategy chat's schema now asks the
+// model for strict ISO, but a model is never a guaranteed-format source.
+// Reject anything else here rather than let a malformed string reach form
+// state and corrupt both displays; the user just gets an empty date to
+// fill in themselves instead of a broken one.
+function isValidIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
 const TODAY_ISO = new Date().toISOString().slice(0, 10);
 
 // Venue discovery: rather than requiring the campaign creator to already
@@ -107,6 +121,7 @@ function VenueField({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [venues, setVenues] = useState<DiscoveredVenue[] | null>(null);
+  const [queriesUsed, setQueriesUsed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pickedName, setPickedName] = useState<string | null>(null);
 
@@ -117,6 +132,7 @@ function VenueField({
     try {
       const res = await discoverVenues(cityName, country);
       setVenues(res.venues);
+      setQueriesUsed(res.search_queries_used);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -173,19 +189,32 @@ function VenueField({
           )}
           {!loading &&
             venues?.map((v, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => pick(v)}
-                className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-black/[0.03]"
-              >
-                <span className="block font-sans text-[12px] text-ink">{v.name}</span>
-                <span className="block font-sans text-[10.5px] text-ink-muted">
-                  {v.venue_type}
-                  {v.approx_capacity ? ` · ${v.approx_capacity}` : ""}
-                </span>
-              </button>
+              <div key={i} className="flex items-start gap-1 rounded-md px-2 py-1.5 hover:bg-black/[0.03]">
+                <button type="button" onClick={() => pick(v)} className="flex-1 text-left">
+                  <span className="block font-sans text-[12px] text-ink">{v.name}</span>
+                  <span className="block font-sans text-[10.5px] text-ink-muted">
+                    {v.venue_type}
+                    {v.approx_capacity ? ` · ${v.approx_capacity}` : ""}
+                  </span>
+                  {v.note && <span className="mt-0.5 block font-sans text-[10.5px] text-ink-muted">{v.note}</span>}
+                </button>
+                <a
+                  href={v.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Open source page — reviews, photos, real capacity/infrastructure details"
+                  className="mt-0.5 shrink-0 text-ink-muted hover:text-ink"
+                >
+                  <ExternalLink size={12} />
+                </a>
+              </div>
             ))}
+          {!loading && queriesUsed.length > 0 && (
+            <p className="px-2 pt-1 font-mono text-[10px] leading-relaxed text-ink-muted/80">
+              Searched: {queriesUsed.join(" · ")}
+            </p>
+          )}
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -263,17 +292,21 @@ export function NewCampaign() {
       setTalentRoster(suggested.talent_roster.join(", "));
     }
 
-    const suggestedIds = new Set(suggested.stops.map((s) => s.city_id));
+    const sanitizedStops = suggested.stops.map((s) => ({
+      ...s,
+      stop_date: s.stop_date && isValidIsoDate(s.stop_date) ? s.stop_date : "",
+    }));
+    const suggestedIds = new Set(sanitizedStops.map((s) => s.city_id));
     const priorSuggestedIds = new Set((lastSuggested?.stops ?? []).map((s) => s.city_id));
     setStops((prev) => {
       const kept = prev.filter((s) => !priorSuggestedIds.has(s.city_id) || suggestedIds.has(s.city_id));
       const updated = kept.map((s) => {
         if (s.stop_date) return s;
-        const match = suggested.stops.find((x) => x.city_id === s.city_id);
+        const match = sanitizedStops.find((x) => x.city_id === s.city_id);
         return match?.stop_date ? { ...s, stop_date: match.stop_date } : s;
       });
       const existingIds = new Set(updated.map((s) => s.city_id));
-      const added = suggested.stops
+      const added = sanitizedStops
         .filter((s) => !existingIds.has(s.city_id) && cities.some((c) => c.city_id === s.city_id))
         .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date }));
       return [...updated, ...added];
