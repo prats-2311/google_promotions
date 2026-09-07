@@ -2,15 +2,44 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Clock, MapPin, Sparkles, Loader2, AlertTriangle, Info, Lightbulb } from "lucide-react";
+import {
+  CheckCircle2, Clock, MapPin, Sparkles, Loader2, AlertTriangle, Info, Lightbulb,
+  ShieldCheck, TrendingUp, Trophy, Gauge,
+} from "lucide-react";
 import { getCampaignOverview, generateBriefs, GenerationAlreadyInFlightError } from "../lib/api";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
+import { StatTile } from "../components/ui/StatTile";
 import { CueCard } from "../components/ui/CueCard";
 import { CampaignEditChat, CampaignEditChatToggle } from "../components/ui/CampaignEditChat";
 import { useCampaignContext } from "../lib/campaignContext";
 import { DashboardSkeleton } from "../components/ui/Skeletons";
-import type { CampaignInsight } from "../lib/types";
+import type { CampaignInsight, CityOverview } from "../lib/types";
+
+// A tier string can arrive as "Tier 1", "tier_1", "1", etc. -- normalize to a
+// short "T1" chip so the card badge stays compact regardless of source shape.
+function tierBadge(tier: string | null): string | null {
+  if (!tier) return null;
+  const n = tier.match(/\d+/)?.[0];
+  return n ? `T${n}` : tier.toUpperCase();
+}
+
+// The campaign's summary KPIs -- the at-a-glance strip the dashboard lacked.
+// Averages only over cities that actually have a score, so a mid-generation
+// campaign reads honestly instead of dragging the mean toward zero.
+function campaignKpis(cities: CityOverview[]) {
+  const scored = cities.filter((c) => c.enthusiasm_score != null);
+  const avg = scored.length
+    ? Math.round(scored.reduce((s, c) => s + (c.enthusiasm_score ?? 0), 0) / scored.length)
+    : null;
+  const top = scored.reduce<CityOverview | null>(
+    (best, c) => (!best || (c.enthusiasm_score ?? 0) > (best.enthusiasm_score ?? 0) ? c : best),
+    null,
+  );
+  const finalCount = cities.filter((c) => c.status === "final").length;
+  const verified = cities.filter((c) => c.grounding_check_passed).length;
+  return { avg, top, finalCount, verified, total: cities.length };
+}
 
 const SEVERITY_STYLE: Record<CampaignInsight["severity"], { icon: typeof AlertTriangle; className: string }> = {
   risk: { icon: AlertTriangle, className: "text-rose-700 bg-rose-950/10" },
@@ -90,7 +119,8 @@ export function Dashboard() {
   if (error) return <ErrorState message={String(error)} />;
   if (!data) return <DashboardSkeleton />;
 
-  const finalCount = data.cities.filter((c) => c.status === "final").length;
+  const kpis = campaignKpis(data.cities);
+  const finalCount = kpis.finalCount;
 
   async function handleGenerate() {
     setTriggerError(null);
@@ -116,15 +146,15 @@ export function Dashboard() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: "easeOut" }}
     >
-      <header className="mb-8 flex items-end justify-between">
-        <div>
-          <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">
-            {data.campaign.campaign_type.replace(/_/g, " ")}
-          </p>
-          <h1 className="mt-1 font-display text-[34px] text-canvas-text">{data.campaign.title}</h1>
-          <p className="mt-1.5 font-sans text-[13px] text-canvas-muted">
-            {data.campaign.genre} · {data.cities.length} city stops · {finalCount} of {data.cities.length} briefs finalized
-          </p>
+      <header className="mb-6 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="inline-block size-1.5 rounded-full bg-gold" aria-hidden />
+            <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">
+              {data.campaign.campaign_type.replace(/_/g, " ")} · {data.campaign.genre}
+            </p>
+          </div>
+          <h1 className="mt-1.5 font-display text-[38px] leading-none text-canvas-text">{data.campaign.title}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <CampaignEditChatToggle open={editOpen} onToggle={() => setEditOpen((v) => !v)} />
@@ -141,6 +171,37 @@ export function Dashboard() {
           )}
         </div>
       </header>
+
+      {/* Campaign summary strip -- the at-a-glance "call sheet header" the
+          dashboard was missing. Every number here is real, derived from the
+          same city data the grid below renders. */}
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile
+          label="City Stops"
+          value={kpis.total}
+          hint={`${finalCount} of ${kpis.total} briefs finalized`}
+          icon={<MapPin size={13} />}
+        />
+        <StatTile
+          label="Avg Enthusiasm"
+          value={kpis.avg != null ? kpis.avg : "—"}
+          hint={kpis.avg != null ? "across scored stops / 100" : "awaiting brief generation"}
+          icon={<Gauge size={13} />}
+        />
+        <StatTile
+          label="Top Market"
+          value={kpis.top ? kpis.top.city_name : "—"}
+          hint={kpis.top ? `${kpis.top.enthusiasm_score}/100 fan enthusiasm` : "no scores yet"}
+          accent={kpis.top ? cityAccentOnPaper(kpis.top.city_id) : undefined}
+          icon={<Trophy size={13} />}
+        />
+        <StatTile
+          label="Grounding Verified"
+          value={`${kpis.verified}/${kpis.total}`}
+          hint="briefs fact-checked vs. live sources"
+          icon={<ShieldCheck size={13} />}
+        />
+      </div>
 
       {editOpen && (
         <CampaignEditChat
@@ -160,6 +221,9 @@ export function Dashboard() {
         {data.cities.map((city, i) => {
           const accent = cityAccentOnPaper(city.city_id);
           const isFinal = city.status === "final";
+          const tier = tierBadge(city.city_importance_tier);
+          const metaParts = [`Stop ${city.sequence_order}`, city.stop_date];
+          if (city.event_format) metaParts.push(city.event_format);
           return (
             <motion.div
               key={city.city_id}
@@ -167,10 +231,27 @@ export function Dashboard() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
             >
-              <Link to={`/city/${city.city_id}`} className="group block transition-transform hover:-translate-y-1">
-                <CueCard accent={accent} meta={`Stop ${city.sequence_order} · ${city.stop_date}`}>
-                  <div className="flex items-start justify-between">
-                    <h2 className="font-display text-[22px] text-ink">{city.city_name}</h2>
+              <Link
+                to={`/city/${city.city_id}`}
+                className="group block transition-transform duration-200 hover:-translate-y-1"
+              >
+                <CueCard
+                  accent={accent}
+                  className="transition-shadow duration-200 group-hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_24px_44px_-18px_rgba(0,0,0,0.65)]"
+                  meta={metaParts.join(" · ")}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h2 className="truncate font-display text-[22px] text-ink">{city.city_name}</h2>
+                      {tier && (
+                        <span
+                          className="shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums"
+                          style={{ backgroundColor: `${accent}1f`, color: accent }}
+                        >
+                          {tier}
+                        </span>
+                      )}
+                    </div>
                     <span
                       className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1 font-sans text-[10px] font-medium ${
                         isFinal ? "bg-emerald-900/10 text-emerald-800" : "bg-black/5 text-ink-muted"
@@ -181,16 +262,30 @@ export function Dashboard() {
                     </span>
                   </div>
 
-                  <div className="mt-4">
-                    <p className="mb-1.5 font-sans text-[10px] uppercase tracking-[0.1em] text-ink-muted">
-                      Fan Enthusiasm
-                    </p>
+                  <div className="mt-5">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <p className="font-sans text-[10px] uppercase tracking-[0.1em] text-ink-muted">
+                        Fan Enthusiasm
+                      </p>
+                      {city.grounding_check_passed && (
+                        <span className="flex items-center gap-1 font-sans text-[10px] font-medium text-emerald-700">
+                          <ShieldCheck size={11} /> Verified
+                        </span>
+                      )}
+                    </div>
                     <StatMeter value={city.enthusiasm_score ?? 0} accent={accent} />
                   </div>
 
-                  <div className="mt-4 flex items-center gap-1.5 font-sans text-[12px] text-ink-muted">
-                    <MapPin size={12} />
-                    <span>View city intelligence &amp; delight card</span>
+                  <div className="mt-5 flex items-center justify-between border-t border-line pt-3">
+                    <span className="flex items-center gap-1.5 font-sans text-[12px] text-ink-muted">
+                      <MapPin size={12} />
+                      City intelligence &amp; delight card
+                    </span>
+                    <TrendingUp
+                      size={13}
+                      className="text-ink-muted opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                      style={{ color: accent }}
+                    />
                   </div>
                 </CueCard>
               </Link>
