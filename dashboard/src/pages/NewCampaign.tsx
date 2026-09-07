@@ -214,6 +214,12 @@ export function NewCampaign() {
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the assistant last suggested for each field -- lets applySuggestion
+  // tell "the user typed over the assistant's guess" apart from "the field
+  // still matches what was last suggested, safe to update live." Without
+  // this, live partial fill-in would either never touch a field again after
+  // the first suggestion, or blindly stomp on a manual edit every turn.
+  const [lastSuggested, setLastSuggested] = useState<SuggestedCampaign | null>(null);
 
   function toggleCity(cityId: string) {
     setStops((prev) =>
@@ -235,16 +241,45 @@ export function NewCampaign() {
     setSelectedMetrics((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
   }
 
+  // Fills the form live as the assistant confirms each field, without ever
+  // clobbering something the user typed/toggled by hand: a scalar field
+  // only updates while it still matches empty or the assistant's own last
+  // guess (comparing against lastSuggested, not the raw current value,
+  // is what tells "user hasn't touched this since" apart from "user typed
+  // over it"). Stops use a diff against lastSuggested's own city set so a
+  // city the assistant later drops disappears here too, while a city the
+  // user checked manually is never removed out from under them.
   function applySuggestion(suggested: SuggestedCampaign) {
-    setTitle(suggested.title);
-    setCampaignType(suggested.campaign_type);
-    setGenre(suggested.genre);
-    setTalentRoster(suggested.talent_roster.join(", "));
-    setStops(
-      suggested.stops
-        .filter((s) => cities.some((c) => c.city_id === s.city_id))
-        .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date }))
-    );
+    if (title === "" || title === lastSuggested?.title) setTitle(suggested.title);
+    if (genre === "" || genre === lastSuggested?.genre) setGenre(suggested.genre);
+    if (
+      (campaignType === CAMPAIGN_TYPES[0].value || campaignType === lastSuggested?.campaign_type) &&
+      suggested.campaign_type
+    ) {
+      setCampaignType(suggested.campaign_type);
+    }
+    const lastSuggestedTalent = (lastSuggested?.talent_roster ?? []).join(", ");
+    if ((talentRoster === "" || talentRoster === lastSuggestedTalent) && suggested.talent_roster.length > 0) {
+      setTalentRoster(suggested.talent_roster.join(", "));
+    }
+
+    const suggestedIds = new Set(suggested.stops.map((s) => s.city_id));
+    const priorSuggestedIds = new Set((lastSuggested?.stops ?? []).map((s) => s.city_id));
+    setStops((prev) => {
+      const kept = prev.filter((s) => !priorSuggestedIds.has(s.city_id) || suggestedIds.has(s.city_id));
+      const updated = kept.map((s) => {
+        if (s.stop_date) return s;
+        const match = suggested.stops.find((x) => x.city_id === s.city_id);
+        return match?.stop_date ? { ...s, stop_date: match.stop_date } : s;
+      });
+      const existingIds = new Set(updated.map((s) => s.city_id));
+      const added = suggested.stops
+        .filter((s) => !existingIds.has(s.city_id) && cities.some((c) => c.city_id === s.city_id))
+        .map((s) => ({ city_id: s.city_id, stop_date: s.stop_date }));
+      return [...updated, ...added];
+    });
+
+    setLastSuggested(suggested);
   }
 
   const canSubmit =

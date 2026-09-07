@@ -105,6 +105,29 @@ def test_only_supported_city_ids_are_offered_to_the_model(mock_parallel_client, 
         assert city_id in captured["prompt"]
 
 
+def test_prompt_instructs_partial_suggested_campaign_every_turn(mock_parallel_client, mock_bq, monkeypatch):
+    """Regression guard: suggested_campaign should fill in live as fields
+    become known, not only once the whole campaign is ready -- that's what
+    lets the New Campaign form populate incrementally instead of staying
+    blank until the very last turn."""
+    captured = {}
+    mock_bq.query.return_value.result.return_value = [
+        {"city_id": "tokyo", "city_name": "Tokyo", "country": "Japan", "region": "East Asia"},
+    ]
+
+    def fake_gemini(prompt, schema):
+        captured["prompt"] = prompt
+        return {"reply": "ok", "ready": False, "suggested_campaign": None, "detected_title": None}
+
+    monkeypatch.setattr(main, "_call_gemini_json", fake_gemini)
+    import tour_data_api_main as m
+    m.app.test_client().post("/campaign_strategy_chat", json={
+        "messages": [{"role": "user", "content": "hello"}]
+    })
+    assert "EVERY turn" in captured["prompt"]
+    assert "ready=true" in captured["prompt"]
+
+
 def test_prompt_includes_country_and_region_so_the_model_can_reason_about_geography(
     mock_parallel_client, mock_bq, monkeypatch
 ):

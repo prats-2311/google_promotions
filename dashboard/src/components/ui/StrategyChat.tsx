@@ -48,8 +48,13 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
       const result = await chatAboutStrategy(nextMessages, strategyText, franchiseContext);
       setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
       setFranchiseContext(result.franchise_context);
-      if (result.ready && result.suggested_campaign) {
+      // Fill the form live from every partial suggestion, not only once the
+      // whole campaign is ready -- applySuggestion itself never overwrites a
+      // field the user has already typed/toggled by hand.
+      if (result.suggested_campaign) {
         onSuggestion(result.suggested_campaign);
+      }
+      if (result.ready && result.suggested_campaign) {
         setApplied(true);
       }
     } catch (err) {
