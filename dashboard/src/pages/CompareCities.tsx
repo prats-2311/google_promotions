@@ -107,7 +107,7 @@ export function CompareCities() {
           <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">
             {overview.campaign.title}
           </p>
-          <h1 className="mt-1 text-balance font-display text-[32px] leading-none text-canvas-text">Compare Cities</h1>
+          <h1 className="title-sheen mt-1 text-balance font-title text-[36px] leading-none">Compare Cities</h1>
           <p className="mt-2 max-w-2xl font-sans text-[13px] text-canvas-muted">
             Ranked by strategic value — importance tier first, fan enthusiasm as the tiebreak.
           </p>
@@ -192,7 +192,7 @@ export function CompareCities() {
                       {i === 0 && (
                         <Crown size={13} aria-hidden style={{ color: accent }} />
                       )}
-                      <span className="rounded-full bg-black/5 px-2 py-0.5 font-sans text-[10px] text-ink-muted">
+                      <span className="rounded-full bg-white/[0.06] px-2 py-0.5 font-sans text-[10px] text-ink-muted">
                         {city.city_importance_tier}
                       </span>
                     </div>
@@ -200,7 +200,7 @@ export function CompareCities() {
                       {city.enthusiasm_score}
                     </span>
                   </div>
-                  <div className="relative h-5 bg-black/5">
+                  <div className="relative h-5 bg-white/[0.06]">
                     <motion.div
                       className="h-5 rounded-r-[4px]"
                       style={{
@@ -230,7 +230,7 @@ export function CompareCities() {
               {ranked.map((city) => {
                 const accent = cityAccentOnPaper(city.city_id);
                 return (
-                  <tr key={city.city_id} className="border-b border-line transition-colors last:border-0 hover:bg-black/[0.025]">
+                  <tr key={city.city_id} className="border-b border-line transition-colors last:border-0 hover:bg-white/[0.04]">
                     <td className="py-2.5 pr-3 font-mono tabular-nums text-ink-muted">{city.strategic_rank}</td>
                     <td className="py-2.5 pr-3">
                       <Link

@@ -105,7 +105,7 @@ export function TourGuide({ active, onClose }: { active: boolean; onClose: () =>
               <span
                 key={s.id}
                 className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: i === stepIndex ? "var(--color-gold)" : "rgba(20,21,26,0.15)" }}
+                style={{ backgroundColor: i === stepIndex ? "var(--color-gold)" : "rgba(240,238,230,0.18)" }}
               />
             ))}
           </div>
@@ -115,7 +115,7 @@ export function TourGuide({ active, onClose }: { active: boolean; onClose: () =>
                 Back
               </button>
             )}
-            <button onClick={next} className="rounded-md bg-gold px-3 py-1.5 font-semibold text-ink hover:opacity-90">
+            <button onClick={next} className="btn-gold rounded-md px-3 py-1.5 font-semibold text-on-gold">
               {stepIndex >= TOUR_STEPS.length - 1 ? "Done" : "Next"}
             </button>
           </div>

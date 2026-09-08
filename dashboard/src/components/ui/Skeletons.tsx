@@ -1,3 +1,5 @@
+import { MorphingLoader } from "./MorphingLoader";
+
 function Block({ className = "" }: { className?: string }) {
   return <div className={`skeleton rounded-md ${className}`} />;
 }
@@ -19,6 +21,7 @@ export function DashboardSkeleton() {
           <CardBlock key={i} className="h-[188px]" />
         ))}
       </div>
+      <MorphingLoader label="Assembling campaign intelligence…" />
     </div>
   );
 }
@@ -84,6 +87,7 @@ export function CityDetailSkeleton() {
           <CardBlock key={i} className="h-[160px]" />
         ))}
       </div>
+      <MorphingLoader label="Pulling this stop's real intelligence…" />
     </div>
   );
 }

@@ -20,7 +20,7 @@ export class CardErrorBoundary extends Component<{ children: ReactNode }, { erro
     if (this.state.error) {
       return (
         <div className="rounded-2xl bg-paper p-6">
-          <p className="font-sans text-[12.5px] text-red-800">
+          <p className="font-sans text-[12.5px] text-red-300">
             This card couldn't be displayed: {this.state.error.message}
           </p>
         </div>

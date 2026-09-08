@@ -7,6 +7,9 @@
 @import "@fontsource/jetbrains-mono/600.css";
 @import "@fontsource/jetbrains-mono/700.css";
 @import "@fontsource/jetbrains-mono/800.css";
+@import "@fontsource/fraunces/400.css";
+@import "@fontsource/fraunces/500.css";
+@import "@fontsource/fraunces/600.css";
 
 @theme {
   /* "Premiere Neon" (chosen 2026-09-07, superseding the earlier Fraunces
@@ -20,27 +23,31 @@
      typewritten fields, not a UI label. Used sparingly, never for body copy. */
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
 
-  /* Near-black canvas, stark white paper cards, sharp corners (see the
-     --radius-* overrides below) -- bolder and more graphic than the
-     earlier warm/soft cinema-ops-room treatment. */
-  --color-canvas: #08080a;
-  --color-canvas-raised: #17161c;
-  --color-canvas-line: #232228;
-  --color-canvas-text: #f5f4f0;
-  --color-canvas-muted: #8d8a95;
+  /* "Premiere Noir" (2026-09-08, evolving Premiere Neon after direct user
+     feedback that stark white slabs on near-black read harsh/basic): warm
+     dark canvas with warm dark LAYERED cards -- surfaces get lighter as
+     they rise (canvas -> card -> well/input), the way premium dark UIs
+     (the Claude app was the stated reference) build depth, instead of
+     flipping to white. The old light-mode ink/paper token NAMES are kept
+     so hundreds of call sites keep working: "paper" now means "card
+     surface" and "ink" means "text on a card". */
+  --color-canvas: #1c1b18;
+  --color-canvas-raised: #26251f;
+  --color-canvas-line: rgba(240, 238, 230, 0.09);
+  --color-canvas-text: #f2f0ea;
+  --color-canvas-muted: #a4a094;
 
-  --color-paper: #ffffff;
-  --color-paper-raised: #f5f5f3;
-  --color-ink: #0a0a0a;
-  --color-ink-muted: rgba(10, 10, 10, 0.55);
-  --color-line: rgba(10, 10, 10, 0.1);
+  --color-paper: #282722;
+  --color-paper-raised: #32312a;
+  --color-ink: #f0eee6;
+  --color-ink-muted: rgba(240, 238, 230, 0.58);
+  --color-line: rgba(240, 238, 230, 0.09);
 
-  /* Neon yellow reads near-white on white paper as TEXT (see dataviz
-     skill's validate_palette.js: 1.27:1 contrast on #ffffff, hard FAIL) --
-     shifted slightly toward amber so it still registers as a border/fill
-     on light cards, not just on the dark canvas where pure yellow is fine. */
   --color-gold: #ffcc00;
   --color-gold-soft: #ffe066;
+  /* Text/icon color ON a gold surface -- ink is now light, so anything
+     sitting on gold needs its own dark token instead of text-ink. */
+  --color-on-gold: #1d1a10;
 
   /* Per-city accents — shared with the Cloud Run delight-card renderer
      (cloud_run/delight_card_renderer/main.py:_CITY_ACCENTS still has the
@@ -61,14 +68,14 @@
   --color-saopaulo: #009e5c;
   --color-newyork: #7c4dff;
 
-  /* Sharp corners over soft ones -- the other half of "Premiere Neon".
-     Overriding the shared tokens (not just the 2xl one actually eyeballed
-     in the mockup) so every rounded-* utility in the app moves together;
-     rounded-full stays untouched since pills/dots are meant to stay round. */
-  --radius-md: 3px;
-  --radius-lg: 4px;
-  --radius-xl: 5px;
-  --radius-2xl: 6px;
+  /* Soft, generous corners (Premiere Noir) -- the Claude-app reference's
+     calm rounding, replacing the old sharp 3-6px ticket-stub corners.
+     Overridden at the token level so every rounded-* utility moves
+     together; rounded-full pills/dots are unaffected. */
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
 }
 
 /* Tailwind's generated `.font-display` utility only sets font-family; the
@@ -82,17 +89,116 @@
   letter-spacing: -0.01em;
 }
 
+/* The one elegant display moment (Premiere Noir): big page titles are set
+   in Fraunces -- the serif greeting from the reference aesthetic -- while
+   .font-display mono stays for labels, stamps, and KPI values. The
+   serif/mono pairing is the identity: elegant marquee over technical
+   call-sheet. */
+.font-title {
+  font-family: "Fraunces", ui-serif, Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
 body {
   margin: 0;
-  background: var(--color-canvas);
+  /* Premiere-spotlight ambiance: two faint corner glows (gold house lights,
+     violet stage wash) over the near-black canvas -- subtle enough to read
+     as atmosphere, not decoration. Fixed so scrolling feels like moving
+     through one lit room rather than dragging a texture along. */
+  background:
+    radial-gradient(1100px 520px at 82% -12%, rgba(255, 204, 0, 0.07), transparent 60%),
+    radial-gradient(950px 540px at -8% 108%, rgba(124, 77, 255, 0.06), transparent 55%),
+    var(--color-canvas);
+  background-attachment: fixed;
   color: var(--color-canvas-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
+/* Glossy ticket-gold CTA surface -- a vertical gold gradient with a top
+   highlight, replacing flat bg-gold on the primary action buttons only
+   (bubbles, chips, and tints keep the flat token). */
+.btn-gold {
+  background-image: linear-gradient(180deg, #ffdd55 0%, var(--color-gold) 55%, #efb900 100%);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition: filter 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+.btn-gold:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow:
+    0 2px 10px rgba(255, 204, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.btn-gold:active:not(:disabled) {
+  transform: scale(0.98);
+}
+/* Unlayered .btn-gold outranks Tailwind's layered disabled: utilities, so
+   the disabled look must live here: a quiet neutral chip, not washed gold. */
+.btn-gold:disabled {
+  background-image: none;
+  background-color: rgba(240, 238, 230, 0.1);
+  color: rgba(240, 238, 230, 0.35);
+  box-shadow: none;
+}
+
+/* Marquee-letter sheen for the big page titles: white at the cap line
+   falling to warm silver at the baseline, like a lit sign. Plain light text
+   where background-clip:text isn't supported, so the title can never
+   render invisible. */
+.title-sheen {
+  color: var(--color-canvas-text);
+}
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .title-sheen {
+    background-image: linear-gradient(180deg, #ffffff 0%, #edebe4 55%, #b6b3a8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
 ::selection {
   background: var(--color-gold);
-  color: var(--color-ink);
+  color: var(--color-on-gold);
+}
+
+/* Morphing gradient loader (hand-rolled after the 21st.dev
+   "loading-ui/morphing-infinity" registry item required auth): a gold-to
+   -violet conic blob whose silhouette continuously melts between
+   asymmetric border-radius states while it slowly spins. Used in the
+   full-page loading skeletons. */
+@keyframes morph-blob {
+  0%, 100% {
+    border-radius: 42% 58% 61% 39% / 45% 43% 57% 55%;
+    transform: rotate(0deg) scale(1);
+  }
+  33% {
+    border-radius: 58% 42% 37% 63% / 55% 61% 39% 45%;
+    transform: rotate(120deg) scale(1.06);
+  }
+  66% {
+    border-radius: 37% 63% 55% 45% / 61% 39% 45% 55%;
+    transform: rotate(240deg) scale(0.96);
+  }
+}
+
+.morphing-loader {
+  width: 44px;
+  height: 44px;
+  background: conic-gradient(from 220deg, #ffcc00, #ff7a45, #7c4dff, #ffcc00);
+  filter: blur(0.5px) saturate(1.15);
+  animation: morph-blob 3.2s ease-in-out infinite;
+  box-shadow: 0 0 28px rgba(255, 204, 0, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .morphing-loader {
+    animation: none;
+    border-radius: 50%;
+  }
 }
 
 @keyframes shimmer {

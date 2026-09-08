@@ -173,7 +173,7 @@ function VenueField({
       {pickedName && (
         <p className="mt-1 font-sans text-[11px] text-ink-muted">Selected: {pickedName}</p>
       )}
-      {error && <p className="mt-1 font-sans text-[11px] text-red-800">Couldn't find venues: {error}</p>}
+      {error && <p className="mt-1 font-sans text-[11px] text-red-300">Couldn't find venues: {error}</p>}
 
       {open && (
         <div className="mt-2 max-h-52 overflow-y-auto rounded-md border border-line bg-paper-raised p-1.5">
@@ -189,7 +189,7 @@ function VenueField({
           )}
           {!loading &&
             venues?.map((v, i) => (
-              <div key={i} className="flex items-start gap-1 rounded-md px-2 py-1.5 hover:bg-black/[0.03]">
+              <div key={i} className="flex items-start gap-1 rounded-md px-2 py-1.5 hover:bg-white/[0.05]">
                 <button type="button" onClick={() => pick(v)} className="flex-1 text-left">
                   <span className="block font-sans text-[12px] text-ink">{v.name}</span>
                   <span className="block font-sans text-[10.5px] text-ink-muted">
@@ -380,7 +380,7 @@ export function NewCampaign() {
           <span className="inline-block size-1.5 rounded-full bg-gold" aria-hidden />
           <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Set up a tour</p>
         </div>
-        <h1 className="mt-1.5 text-balance font-display text-[38px] leading-none text-canvas-text">New Campaign</h1>
+        <h1 className="title-sheen mt-1.5 text-balance font-title text-[42px] leading-none">New Campaign</h1>
         <p className="mt-2 font-sans text-[13px] text-canvas-muted">
           {cities.length > 0 ? (
             <>
@@ -458,7 +458,7 @@ export function NewCampaign() {
                 <div
                   key={city.city_id}
                   className={`rounded-lg border px-3 py-2.5 transition-colors ${
-                    selected ? "border-ink/15 bg-black/[0.02]" : "border-line"
+                    selected ? "border-ink/15 bg-white/[0.03]" : "border-line"
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -472,7 +472,7 @@ export function NewCampaign() {
                         className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border"
                         style={{
                           backgroundColor: selected ? accent : "transparent",
-                          borderColor: selected ? accent : "rgba(20,21,26,0.2)",
+                          borderColor: selected ? accent : "rgba(240,238,230,0.3)",
                         }}
                       >
                         {selected && <Check size={11} className="text-white" />}
@@ -527,7 +527,7 @@ export function NewCampaign() {
                   aria-pressed={selected}
                   className={`rounded-full border px-3 py-1.5 font-sans text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40 ${
                     selected
-                      ? "border-gold bg-gold/15 text-ink"
+                      ? "border-gold/70 bg-gold/15 text-gold"
                       : "border-line bg-paper-raised text-ink-muted hover:text-ink"
                   }`}
                 >
@@ -539,7 +539,7 @@ export function NewCampaign() {
         </div>
 
         {error && (
-          <div className="mt-5 rounded-lg border border-red-900/20 bg-red-950/5 px-3 py-2 font-sans text-[12px] text-red-800">
+          <div className="mt-5 rounded-lg border border-red-300/20 bg-red-300/[0.06] px-3 py-2 font-sans text-[12px] text-red-300">
             Couldn't create the campaign: {error}
           </div>
         )}
@@ -557,7 +557,7 @@ export function NewCampaign() {
               ))}
             </ul>
           ) : (
-            <p className="mb-3 flex items-center gap-1.5 font-sans text-[12px] font-medium text-emerald-700">
+            <p className="mb-3 flex items-center gap-1.5 font-sans text-[12px] font-medium text-emerald-300">
               <CheckCircle2 size={13} aria-hidden /> Ready to launch — {stops.length}{" "}
               {stops.length === 1 ? "stop" : "stops"} set.
             </p>
@@ -565,7 +565,7 @@ export function NewCampaign() {
           <button
             type="submit"
             disabled={!canSubmit || submitting}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gold px-4 py-2.5 font-sans text-[13px] font-semibold text-ink outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-gold flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-sans text-[13px] font-semibold text-on-gold outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-40"
           >
             {submitting && <Loader2 size={14} className="animate-spin" aria-hidden />}
             {submitting ? "Creating…" : "Create Campaign"}

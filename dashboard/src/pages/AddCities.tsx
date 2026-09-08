@@ -93,7 +93,7 @@ export function AddCities() {
           <span className="inline-block size-1.5 rounded-full bg-gold" aria-hidden />
           <p className="font-sans text-[11px] uppercase tracking-[0.16em] text-canvas-muted">Expand Coverage</p>
         </div>
-        <h1 className="mt-1.5 text-balance font-display text-[38px] leading-none text-canvas-text">Add Cities</h1>
+        <h1 className="title-sheen mt-1.5 text-balance font-title text-[42px] leading-none">Add Cities</h1>
         <p className="mt-2 font-sans text-[13px] text-canvas-muted">
           Real Parallel Task API research per city — region, country, primary language, and timezone, not a bare
           placeholder row. New cities become selectable in New Campaign as soon as research finishes.
@@ -112,7 +112,7 @@ export function AddCities() {
           />
         </Field>
 
-        {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't add cities: {error}</p>}
+        {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't add cities: {error}</p>}
 
         <button
           type="submit"
@@ -145,7 +145,7 @@ export function AddCities() {
                   {result.added.map((id) => (
                     <span
                       key={id}
-                      className="flex items-center gap-1 rounded-full border border-emerald-700/30 bg-emerald-700/10 px-2.5 py-1 font-sans text-[11px] text-emerald-800"
+                      className="flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2.5 py-1 font-sans text-[11px] text-emerald-300"
                     >
                       <Check size={11} aria-hidden /> {id}
                     </span>
@@ -180,7 +180,7 @@ export function AddCities() {
             <Globe2 size={14} className="text-ink-muted" aria-hidden />
             <p className="font-display text-[13px] uppercase tracking-[0.08em] text-ink">City Library</p>
           </div>
-          <span className="rounded-full bg-black/5 px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-ink-muted">
+          <span className="rounded-full bg-white/[0.06] px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-ink-muted">
             {data?.cities.length ?? (isLoading ? "…" : 0)}
           </span>
         </div>
@@ -190,7 +190,7 @@ export function AddCities() {
             return (
               <div
                 key={city.city_id}
-                className="flex items-center justify-between gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-black/[0.025]"
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-white/[0.04]"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <MapPin size={12} className="shrink-0 text-ink-muted/60" aria-hidden />

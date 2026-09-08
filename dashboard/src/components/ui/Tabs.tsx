@@ -30,7 +30,7 @@ export function Tabs<T extends string>({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(item.value)}
-            className={`relative px-4 py-2.5 font-sans text-[13px] transition-colors ${
+            className={`relative rounded-t-md px-4 py-2.5 font-sans text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gold/50 ${
               active ? "text-canvas-text" : "text-canvas-muted hover:text-canvas-text"
             }`}
           >

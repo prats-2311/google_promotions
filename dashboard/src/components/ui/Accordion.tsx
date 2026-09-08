@@ -245,7 +245,7 @@ function AccordionRow({
       <div role="heading" aria-level={3}>
         <button
           {...header}
-          className="-mx-2 flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left outline-none transition-colors hover:bg-black/[0.03] focus-visible:bg-black/[0.03]"
+          className="-mx-2 flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left outline-none transition-colors hover:bg-white/[0.05] focus-visible:bg-white/[0.05]"
         >
           <span className="min-w-0 flex-1 truncate font-sans text-[13px] font-medium text-ink">{item.title}</span>
           {item.meta && <span className="shrink-0 font-sans text-[11px] tabular-nums text-ink-muted">{item.meta}</span>}

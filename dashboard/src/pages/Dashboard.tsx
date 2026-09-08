@@ -44,7 +44,7 @@ function campaignKpis(cities: CityOverview[]) {
 const SEVERITY_STYLE: Record<CampaignInsight["severity"], { icon: typeof AlertTriangle; className: string }> = {
   risk: { icon: AlertTriangle, className: "text-rose-700 bg-rose-950/10" },
   advisory: { icon: Lightbulb, className: "text-amber-700 bg-amber-950/10" },
-  info: { icon: Info, className: "text-ink-muted bg-black/5" },
+  info: { icon: Info, className: "text-ink-muted bg-white/[0.06]" },
 };
 
 // The "insight that wasn't possible before": a synthesis pass over every
@@ -73,7 +73,7 @@ function CampaignInsightsPanel({ insights }: { insights: CampaignInsight[] }) {
                   <p className="mt-1 font-sans text-[13px] leading-relaxed text-ink-muted">{insight.summary}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {insight.affected_cities.map((c) => (
-                      <span key={c} className="rounded-full bg-black/5 px-2 py-0.5 font-sans text-[10.5px] text-ink-muted">
+                      <span key={c} className="rounded-full bg-white/[0.06] px-2 py-0.5 font-sans text-[10.5px] text-ink-muted">
                         {c}
                       </span>
                     ))}
@@ -154,7 +154,7 @@ export function Dashboard() {
               {data.campaign.campaign_type.replace(/_/g, " ")} · {data.campaign.genre}
             </p>
           </div>
-          <h1 className="mt-1.5 text-balance font-display text-[38px] leading-none text-canvas-text">{data.campaign.title}</h1>
+          <h1 className="title-sheen mt-1.5 text-balance font-title text-[42px] leading-none">{data.campaign.title}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <CampaignEditChatToggle open={editOpen} onToggle={() => setEditOpen((v) => !v)} />
@@ -163,7 +163,7 @@ export function Dashboard() {
               data-tour="generate-briefs"
               onClick={handleGenerate}
               disabled={isGenerating}
-              className="flex shrink-0 items-center gap-2 rounded-lg bg-gold px-4 py-2.5 font-sans text-[13px] font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-gold flex shrink-0 items-center gap-2 rounded-lg px-4 py-2.5 font-sans text-[13px] font-semibold text-on-gold disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
               {isGenerating ? "Generating briefs…" : "Generate Briefs"}
@@ -177,18 +177,21 @@ export function Dashboard() {
           same city data the grid below renders. */}
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile
+          delay={0.0}
           label="City Stops"
           value={kpis.total}
           hint={`${finalCount} of ${kpis.total} briefs finalized`}
           icon={<MapPin size={13} />}
         />
         <StatTile
+          delay={0.06}
           label="Avg Enthusiasm"
           value={kpis.avg != null ? kpis.avg : "—"}
           hint={kpis.avg != null ? "across scored stops / 100" : "awaiting brief generation"}
           icon={<Gauge size={13} />}
         />
         <StatTile
+          delay={0.12}
           label="Top Market"
           value={kpis.top ? kpis.top.city_name : "—"}
           hint={kpis.top ? `${kpis.top.enthusiasm_score}/100 fan enthusiasm` : "no scores yet"}
@@ -196,6 +199,7 @@ export function Dashboard() {
           icon={<Trophy size={13} />}
         />
         <StatTile
+          delay={0.18}
           label="Grounding Verified"
           value={`${kpis.verified}/${kpis.total}`}
           hint="briefs fact-checked vs. live sources"
@@ -233,11 +237,12 @@ export function Dashboard() {
             >
               <Link
                 to={`/city/${city.city_id}`}
+                style={{ "--card-glow": accent } as React.CSSProperties}
                 className="group block rounded-2xl transition-transform duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
               >
                 <CueCard
                   accent={accent}
-                  className="transition-shadow duration-200 group-hover:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_24px_44px_-18px_rgba(0,0,0,0.65)]"
+                  className="transition-shadow duration-200 group-hover:shadow-[0_1px_2px_rgba(0,0,0,0.35),0_22px_48px_-14px_color-mix(in_srgb,var(--card-glow)_45%,transparent)]"
                   meta={metaParts.join(" · ")}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -254,7 +259,7 @@ export function Dashboard() {
                     </div>
                     <span
                       className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-1 font-sans text-[10px] font-medium ${
-                        isFinal ? "bg-emerald-900/10 text-emerald-800" : "bg-black/5 text-ink-muted"
+                        isFinal ? "bg-emerald-300/10 text-emerald-300" : "bg-white/[0.06] text-ink-muted"
                       }`}
                     >
                       {isFinal ? <CheckCircle2 size={11} aria-hidden /> : <Clock size={11} aria-hidden />}
@@ -268,7 +273,7 @@ export function Dashboard() {
                         Fan Enthusiasm
                       </p>
                       {city.grounding_check_passed && (
-                        <span className="flex items-center gap-1 font-sans text-[10px] font-medium text-emerald-700">
+                        <span className="flex items-center gap-1 font-sans text-[10px] font-medium text-emerald-300">
                           <ShieldCheck size={11} aria-hidden /> Verified
                         </span>
                       )}

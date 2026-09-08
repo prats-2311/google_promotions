@@ -24,7 +24,7 @@ export function CueCard({
   bodyClassName?: string;
 }) {
   return (
-    <div className={`overflow-hidden rounded-2xl bg-paper shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_32px_-16px_rgba(0,0,0,0.5)] ${className}`}>
+    <div className={`overflow-hidden rounded-2xl border border-white/[0.06] bg-paper shadow-[0_1px_2px_rgba(0,0,0,0.3),0_16px_32px_-16px_rgba(0,0,0,0.5)] ${className}`}>
       <div
         aria-hidden
         className="h-2.5"

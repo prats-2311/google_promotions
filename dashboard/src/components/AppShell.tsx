@@ -113,12 +113,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-canvas">
       <TourGuide active={tourActive} onClose={() => setTourActive(false)} />
-      <aside className="flex w-60 shrink-0 flex-col border-r border-canvas-line px-5 py-6">
+      <aside className="flex w-60 shrink-0 flex-col border-r border-canvas-line bg-gradient-to-b from-white/[0.03] to-transparent px-5 py-6">
         <div className="mb-10 flex items-center justify-between gap-2.5 px-1">
           <div className="flex items-center gap-2.5">
-            <Clapperboard size={20} className="text-gold" />
+            <Clapperboard size={20} className="text-gold" aria-hidden />
             <div>
-              <p className="font-display text-[15px] leading-tight text-canvas-text">Tour Intelligence</p>
+              <p className="font-title text-[17px] leading-tight text-canvas-text">Tour Intelligence</p>
               <p className="font-sans text-[10px] uppercase tracking-[0.14em] text-canvas-muted">
                 Agentic Cinema OS
               </p>
@@ -142,9 +142,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               end={end}
               data-tour={to === "/compare" ? "compare-cities-nav" : undefined}
               className={({ isActive }) =>
-                `flex items-center gap-2.5 rounded-lg px-3 py-2 font-sans text-[13px] transition-colors ${
+                `flex items-center gap-2.5 rounded-lg px-3 py-2 font-sans text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gold/50 ${
                   isActive
-                    ? "bg-canvas-raised text-canvas-text"
+                    ? "bg-canvas-raised text-canvas-text shadow-[inset_2.5px_0_0_0_var(--color-gold)]"
                     : "text-canvas-muted hover:bg-canvas-raised/60 hover:text-canvas-text"
                 }`
               }

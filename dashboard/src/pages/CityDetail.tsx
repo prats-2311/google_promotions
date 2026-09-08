@@ -170,7 +170,7 @@ function CulturalDriftCheck({
         </button>
       </div>
 
-      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check for updates: {error}</p>}
+      {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't check for updates: {error}</p>}
 
       {!checking && events === null && !error && (
         <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
@@ -275,9 +275,9 @@ function StopOutcomeCheck({
 
   const sentimentClass =
     outcome?.sentiment === "positive"
-      ? "text-emerald-700"
+      ? "text-emerald-300"
       : outcome?.sentiment === "negative"
-        ? "text-red-700"
+        ? "text-red-300"
         : "text-ink-muted";
 
   return (
@@ -295,7 +295,7 @@ function StopOutcomeCheck({
         </button>
       </div>
 
-      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check outcome: {error}</p>}
+      {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't check outcome: {error}</p>}
 
       {!outcome && !checking && !error && (
         <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
@@ -382,7 +382,7 @@ function LocalCrewVendorsCard({ cityName, accent }: { cityName: string; accent: 
         </button>
       </div>
 
-      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't search: {error}</p>}
+      {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't search: {error}</p>}
 
       {!result && !loading && !error && (
         <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
@@ -484,7 +484,7 @@ function VisaRequirementsCard({ accent }: { accent: string }) {
         </button>
       </div>
 
-      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check: {error}</p>}
+      {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't check: {error}</p>}
 
       {result && (
         <div className="mt-3">
@@ -539,10 +539,10 @@ function SeasonalWeatherRiskCard({ cityName, accent }: { cityName: string; accen
 
   const riskClass =
     result?.risk_level === "high"
-      ? "text-red-700"
+      ? "text-red-300"
       : result?.risk_level === "medium"
         ? "text-amber-700"
-        : "text-emerald-700";
+        : "text-emerald-300";
 
   return (
     <div className="rounded-2xl bg-paper p-6">
@@ -565,7 +565,7 @@ function SeasonalWeatherRiskCard({ cityName, accent }: { cityName: string; accen
         </button>
       </div>
 
-      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't check: {error}</p>}
+      {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't check: {error}</p>}
 
       {result && (
         <div className="mt-3">
@@ -673,7 +673,7 @@ function StopSafetyChecklistCard({
         </label>
       </div>
 
-      {error && <p className="mt-3 font-sans text-[12px] text-red-800">Couldn't save: {error}</p>}
+      {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't save: {error}</p>}
 
       <button
         type="button"
@@ -758,7 +758,7 @@ export function CityDetail() {
           Stop {data.stop.sequence_order} · {data.stop.stop_date}
           {data.stop.event_format ? ` · ${data.stop.event_format}` : ""}
         </p>
-        <h1 className="mt-1.5 text-balance font-display text-[42px] leading-none text-canvas-text">
+        <h1 className="title-sheen mt-1.5 text-balance font-title text-[46px] leading-none">
           {data.stop.city_name}
         </h1>
         {data.fanSignal && (
@@ -850,7 +850,7 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
         <ul className="mt-2 space-y-2">
           {cultureNotes.dos.map((d, i) => (
             <li key={i} className="flex gap-2 font-sans text-[13px] text-ink">
-              <Check size={14} className="mt-0.5 shrink-0 text-emerald-700" /> {d}
+              <Check size={14} className="mt-0.5 shrink-0 text-emerald-300" /> {d}
             </li>
           ))}
         </ul>
@@ -860,7 +860,7 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
         <ul className="mt-2 space-y-2">
           {cultureNotes.donts.map((d, i) => (
             <li key={i} className="flex gap-2 font-sans text-[13px] text-ink">
-              <X size={14} className="mt-0.5 shrink-0 text-red-700" /> {d}
+              <X size={14} className="mt-0.5 shrink-0 text-red-300" /> {d}
             </li>
           ))}
         </ul>

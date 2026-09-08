@@ -19,7 +19,7 @@ export function AudioPlayButton({ src, accent }: { src: string; accent: string }
       type="button"
       onClick={toggle}
       aria-label={playing ? "Pause pronunciation" : "Play pronunciation"}
-      className="flex size-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+      className="flex size-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-white/[0.06]"
       style={{ color: accent }}
     >
       {playing ? <Pause size={13} /> : <Play size={13} />}

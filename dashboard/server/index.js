@@ -711,7 +711,12 @@ app.use(
   })
 );
 app.get(/(.*)/, (_req, res) => {
-  res.setHeader("Cache-Control", "no-cache");
+  // no-store, not no-cache: Chrome was observed (2026-09-08) reusing a
+  // per-URL disk-cached copy of index.html on plain navigations despite
+  // no-cache, leaving different SPA routes pinned to different old builds
+  // in the same tab. index.html is a few KB — never caching it at all is
+  // the correct trade against ever referencing deleted hashed chunks.
+  res.setHeader("Cache-Control", "no-store");
   res.sendFile(path.join(distDir, "index.html"));
 });
 

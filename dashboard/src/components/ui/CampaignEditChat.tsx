@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Check, Loader2, Search, Send, Sparkles, X } from "lucide-react";
+import { Check, Loader2, Send, Sparkles, X } from "lucide-react";
 import { addCampaignStops, chatAboutCampaignEdit, removeCampaignStop, updateCampaign } from "../../lib/api";
 import type { ChatMessage, ProposedCampaignChanges } from "../../lib/types";
+import { CueCard } from "./CueCard";
+import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
 
 // Real writes to a live, already-created campaign -- unlike NewCampaign's
 // StrategyChat (which only pre-fills a local draft form the user still
@@ -19,16 +21,25 @@ function describeChanges(changes: ProposedCampaignChanges): string[] {
   return lines;
 }
 
+const EDIT_SUGGESTIONS = [
+  "Add a stop in Berlin this November",
+  "Change the genre",
+  "Rename this campaign",
+];
+
 export function CampaignEditChatToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       onClick={onToggle}
-      className={`flex shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 font-sans text-[13px] transition-colors ${
-        open ? "border-gold/50 text-ink bg-gold/10" : "border-canvas-line text-canvas-text hover:border-gold/50"
+      aria-pressed={open}
+      className={`flex shrink-0 items-center gap-2 rounded-lg border px-3.5 py-2 font-sans text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
+        open
+          ? "border-gold bg-gold/15 text-gold"
+          : "border-canvas-line text-canvas-text hover:border-gold/50"
       }`}
     >
-      <Sparkles size={14} className="text-gold" />
+      <Sparkles size={14} className="text-gold" aria-hidden />
       Edit with assistant
     </button>
   );
@@ -109,66 +120,70 @@ export function CampaignEditChat({
   }
 
   return (
-    <div className="mb-6 rounded-2xl bg-paper p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Sparkles size={14} className="text-gold" />
-          <p className="font-display text-[15px] text-ink">Edit this campaign</p>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Close">
-          <X size={14} className="text-ink-muted hover:text-ink" />
+    <CueCard accent="var(--color-gold)" className="mb-6" bodyClassName="p-5">
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+          AI assistant · nothing writes until you apply
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded p-0.5 text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
+        >
+          <X size={14} aria-hidden />
         </button>
       </div>
+      <div className="mb-1.5 flex items-center gap-2">
+        <Sparkles size={15} className="text-gold" aria-hidden />
+        <p className="font-display text-[16px] text-ink">Edit this campaign</p>
+      </div>
       <p className="mb-4 font-sans text-[12.5px] text-ink-muted">
-        Describe a change — add a stop, drop one, tweak the genre or roster. Nothing is written until you
-        review and apply it below.
+        Describe a change — add a stop, drop one, tweak the genre or roster — then review the diff before applying.
       </p>
 
       {messages.length > 0 && (
-        <div className="mb-3 max-h-64 space-y-2 overflow-y-auto rounded-lg border border-line bg-black/[0.015] p-3">
+        <div className="mb-3 max-h-64 space-y-2.5 overflow-y-auto rounded-lg bg-paper-raised/80 p-3">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <p
-                className={`max-w-[85%] rounded-lg px-3 py-1.5 font-sans text-[12.5px] leading-relaxed ${
-                  m.role === "user" ? "bg-gold/20 text-ink" : "bg-paper-raised text-ink"
-                }`}
-              >
-                {m.content}
-              </p>
-            </div>
+            <ChatBubble key={i} role={m.role}>
+              {m.content}
+            </ChatBubble>
           ))}
+          {sending && <TypingIndicator />}
         </div>
       )}
 
+      {messages.length === 0 && <SuggestionChips suggestions={EDIT_SUGGESTIONS} onPick={setInput} />}
+
       {pendingChanges && (
-        <div className="mb-3 rounded-lg border border-gold/40 bg-gold/10 p-3">
-          <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink">
+        <div className="mb-3 rounded-lg border border-gold/50 bg-gold/10 p-3.5">
+          <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink">
             Review before applying
           </p>
-          <ul className="mb-3 space-y-1">
+          <ul className="mb-3 space-y-1.5">
             {describeChanges(pendingChanges).map((line, i) => (
-              <li key={i} className="flex items-start gap-1.5 font-sans text-[12.5px] text-ink">
-                <Search size={11} className="mt-0.5 shrink-0 text-ink-muted" />
+              <li key={i} className="flex items-start gap-2 font-sans text-[12.5px] text-ink">
+                <span className="mt-[6px] size-1.5 shrink-0 bg-gold" aria-hidden />
                 {line}
               </li>
             ))}
           </ul>
-          {applyError && <p className="mb-2 font-sans text-[12px] text-red-800">Couldn't apply: {applyError}</p>}
+          {applyError && <p className="mb-2 font-sans text-[12px] text-red-300">Couldn't apply: {applyError}</p>}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleApply}
               disabled={applying}
-              className="flex items-center gap-1.5 rounded-lg bg-gold px-3 py-1.5 font-sans text-[12px] font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-gold flex items-center gap-1.5 rounded-lg px-3.5 py-2 font-sans text-[12px] font-semibold text-on-gold outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {applying ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              {applying ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Check size={12} aria-hidden />}
               {applying ? "Applying…" : "Apply changes"}
             </button>
             <button
               type="button"
               onClick={() => setPendingChanges(null)}
               disabled={applying}
-              className="rounded-lg border border-line px-3 py-1.5 font-sans text-[12px] text-ink-muted hover:text-ink"
+              className="rounded-lg border border-ink/15 px-3.5 py-2 font-sans text-[12px] text-ink-muted outline-none transition-colors hover:border-ink/40 hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
             >
               Discard
             </button>
@@ -177,13 +192,13 @@ export function CampaignEditChat({
       )}
 
       {applied && (
-        <p className="mb-3 font-sans text-[11px] uppercase tracking-[0.08em] text-emerald-700">
-          Applied — the campaign now reflects these changes
+        <p className="mb-3 flex items-center gap-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-300">
+          <Check size={12} aria-hidden /> Applied — the campaign now reflects these changes
         </p>
       )}
 
       {error && (
-        <div className="mb-3 rounded-lg border border-red-900/20 bg-red-950/5 px-3 py-2 font-sans text-[12px] text-red-800">
+        <div className="mb-3 rounded-lg border border-red-300/20 bg-red-300/[0.06] px-3 py-2 font-sans text-[12px] text-red-300">
           Couldn't reach the assistant: {error}
         </div>
       )}
@@ -195,18 +210,18 @@ export function CampaignEditChat({
           onKeyDown={handleKeyDown}
           placeholder="e.g. Add a stop in Berlin on November 10th"
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-line bg-paper-raised px-3 py-2.5 font-sans text-[13px] text-ink outline-none focus:border-ink/30"
+          className={CHAT_INPUT_CLASS}
         />
         <button
           type="button"
           onClick={send}
           disabled={sending || !input.trim()}
-          className="flex shrink-0 items-center justify-center rounded-lg bg-gold p-2.5 text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className={CHAT_SEND_CLASS}
           aria-label="Send"
         >
-          {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {sending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Send size={14} aria-hidden />}
         </button>
       </div>
-    </div>
+    </CueCard>
   );
 }

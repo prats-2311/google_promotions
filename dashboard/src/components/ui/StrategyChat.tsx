@@ -2,11 +2,19 @@ import { useRef, useState } from "react";
 import { Loader2, Paperclip, Search, Send, Sparkles, X } from "lucide-react";
 import { chatAboutStrategy } from "../../lib/api";
 import type { ChatMessage, FranchiseContext, SuggestedCampaign } from "../../lib/types";
+import { CueCard } from "./CueCard";
+import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
 
 // .txt/.md only, read client-side via FileReader -- no multer/multipart on
 // the server (none installed today), no PDF parsing. A clean later add, not
 // a blocker for a first version of this feature.
 const ACCEPTED_FILE_TYPES = ".txt,.md";
+
+const STRATEGY_SUGGESTIONS = [
+  "Synth-pop world tour, Tokyo and London this fall",
+  "Promo tour for a sci-fi film across Asia",
+  "3-city Europe press tour in May",
+];
 
 export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: SuggestedCampaign) => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -72,10 +80,13 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
   }
 
   return (
-    <div className="mb-6 rounded-2xl bg-paper p-5">
-      <div className="mb-3 flex items-center gap-2">
-        <Sparkles size={14} className="text-gold" />
-        <p className="font-display text-[15px] text-ink">Draft with an assistant</p>
+    <CueCard accent="var(--color-gold)" className="mb-6" bodyClassName="p-5">
+      <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+        AI co-planner · grounded with live web research
+      </p>
+      <div className="mb-1.5 flex items-center gap-2">
+        <Sparkles size={15} className="text-gold" aria-hidden />
+        <p className="font-display text-[16px] text-ink">Draft with an assistant</p>
       </div>
       <p className="mb-4 font-sans text-[12.5px] text-ink-muted">
         Paste or attach an existing strategy, or just describe the tour — the form below will
@@ -83,29 +94,26 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
       </p>
 
       {messages.length > 0 && (
-        <div className="mb-3 max-h-64 space-y-2 overflow-y-auto rounded-lg border border-line bg-black/[0.015] p-3">
+        <div className="mb-3 max-h-64 space-y-2.5 overflow-y-auto rounded-lg bg-paper-raised/80 p-3">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <p
-                className={`max-w-[85%] rounded-lg px-3 py-1.5 font-sans text-[12.5px] leading-relaxed ${
-                  m.role === "user" ? "bg-gold/20 text-ink" : "bg-paper-raised text-ink"
-                }`}
-              >
-                {m.content}
-              </p>
-            </div>
+            <ChatBubble key={i} role={m.role}>
+              {m.content}
+            </ChatBubble>
           ))}
+          {sending && <TypingIndicator />}
           {applied && (
-            <p className="pt-1 text-center font-sans text-[11px] uppercase tracking-[0.08em] text-emerald-700">
+            <p className="pt-1 text-center font-sans text-[11px] uppercase tracking-[0.08em] text-emerald-300">
               Applied to the form below — review and edit before creating
             </p>
           )}
         </div>
       )}
 
+      {messages.length === 0 && <SuggestionChips suggestions={STRATEGY_SUGGESTIONS} onPick={setInput} />}
+
       {franchiseContext && (
-        <div className="mb-3 flex items-start gap-2 rounded-lg border border-line bg-paper-raised px-3 py-2">
-          <Search size={12} className="mt-0.5 shrink-0 text-ink-muted" />
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-ink/10 bg-paper-raised px-3 py-2">
+          <Search size={12} className="mt-0.5 shrink-0 text-ink-muted" aria-hidden />
           <p className="font-sans text-[11.5px] leading-relaxed text-ink-muted">
             {franchiseContext.is_real_property ? (
               <>
@@ -124,27 +132,33 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
       )}
 
       {strategyFileName && (
-        <div className="mb-3 flex w-fit items-center gap-2 rounded-full border border-line bg-paper-raised px-3 py-1">
-          <Paperclip size={11} className="text-ink-muted" />
+        <div className="mb-3 flex w-fit items-center gap-2 rounded-full border border-ink/15 bg-paper-raised px-3 py-1">
+          <Paperclip size={11} className="text-ink-muted" aria-hidden />
           <span className="font-sans text-[11px] text-ink">{strategyFileName}</span>
-          <button type="button" onClick={clearFile} aria-label="Remove attached strategy">
-            <X size={11} className="text-ink-muted hover:text-ink" />
+          <button
+            type="button"
+            onClick={clearFile}
+            aria-label="Remove attached strategy"
+            className="rounded outline-none focus-visible:ring-2 focus-visible:ring-gold/50"
+          >
+            <X size={11} className="text-ink-muted hover:text-ink" aria-hidden />
           </button>
         </div>
       )}
 
       {error && (
-        <div className="mb-3 rounded-lg border border-red-900/20 bg-red-950/5 px-3 py-2 font-sans text-[12px] text-red-800">
+        <div className="mb-3 rounded-lg border border-red-300/20 bg-red-300/[0.06] px-3 py-2 font-sans text-[12px] text-red-300">
           Couldn't reach the assistant: {error}
         </div>
       )}
 
       <div className="flex items-end gap-2">
         <label
-          className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-line bg-paper-raised p-2.5 text-ink-muted hover:text-ink"
+          className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-ink/15 bg-paper-raised p-2.5 text-ink-muted transition-colors hover:border-ink/40 hover:text-ink"
           title="Attach a .txt or .md strategy document"
         >
-          <Paperclip size={14} />
+          <Paperclip size={14} aria-hidden />
+          <span className="sr-only">Attach a .txt or .md strategy document</span>
           <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} onChange={handleFile} className="hidden" />
         </label>
         <textarea
@@ -153,18 +167,18 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
           onKeyDown={handleKeyDown}
           placeholder="e.g. We're planning a synth-pop tour, Tokyo and London this fall…"
           rows={1}
-          className="flex-1 resize-none rounded-lg border border-line bg-paper-raised px-3 py-2.5 font-sans text-[13px] text-ink outline-none focus:border-ink/30"
+          className={CHAT_INPUT_CLASS}
         />
         <button
           type="button"
           onClick={send}
           disabled={sending || !input.trim()}
-          className="flex shrink-0 items-center justify-center rounded-lg bg-gold p-2.5 text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className={CHAT_SEND_CLASS}
           aria-label="Send"
         >
-          {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {sending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Send size={14} aria-hidden />}
         </button>
       </div>
-    </div>
+    </CueCard>
   );
 }
