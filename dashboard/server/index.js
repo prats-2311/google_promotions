@@ -466,12 +466,17 @@ app.post("/api/tour-book", async (req, res) => {
     const cities = await Promise.all(
       stopsResp.stops.map(async (stop) => {
         const brief = briefByCity[stop.city_id] ?? null;
-        const [signal, delight, cultureNotes] = await Promise.all([
+        const [signal, delight, cultureNotes, cityDemographics] = await Promise.all([
           cachedCallTool(
             `/fan_signals?city_id=${stop.city_id}&genre=${encodeURIComponent(campaign.genre)}&artist_type=${artistTypeFor(campaign.campaign_type)}`
           ).catch(() => null),
           cachedCallTool(`/local_delight?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
           cachedCallTool(`/culture_notes?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
+          // Curated city-level demographics as a fallback -- briefs generated
+          // before the demographics feature (or without metrics selected)
+          // store none, but the boss-facing book should still show real
+          // population/market data when the city table has it.
+          cachedCallTool(`/city_demographics?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
         ]);
 
         const moodboard = await ensureMoodboard({
@@ -501,7 +506,7 @@ app.post("/api/tour-book", async (req, res) => {
           fan_behavior_style: signal?.fan_behavior_style ?? null,
           grounding_check_passed: brief?.grounding_check_passed ?? false,
           delight_card_url: brief?.delight_card_url ?? null,
-          demographics: safeParse(brief?.demographic_snapshot_json),
+          demographics: safeParse(brief?.demographic_snapshot_json) ?? cityDemographics,
           venue: safeParse(brief?.venue_notes_json),
           talent_brief: talentBrief,
           style_moodboard_url: moodboard.url,
