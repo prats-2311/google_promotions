@@ -2,20 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{ city_name }} — Delight Card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
 <style>
+  /* "Premiere Noir" — hand-synced with dashboard/src/index.css (2026-09-08):
+     warm dark canvas with ambient corner glows, a dark layered card with the
+     CueCard filmstrip-perforation rail, Fraunces serif headline over a
+     JetBrains Mono label layer. If the dashboard's treatment changes again,
+     update this copy too (see dashboard/CLAUDE.md). */
   :root {
     --accent: {{ accent_color }};
-    --ink: #0a0a0a;
-    --paper: #ffffff;
-    --line: rgba(10,10,10,0.10);
-    --muted: rgba(10,10,10,0.55);
+    --canvas: #1c1b18;
+    --card: #282722;
+    --well: #32312a;
+    --ink: #f0eee6;
+    --line: rgba(240, 238, 230, 0.09);
+    --muted: rgba(240, 238, 230, 0.58);
+    --gold: #ffcc00;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: #08080a;
-    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    background:
+      radial-gradient(900px 420px at 85% -10%, rgba(255, 204, 0, 0.07), transparent 60%),
+      radial-gradient(760px 440px at -8% 108%, rgba(124, 77, 255, 0.06), transparent 55%),
+      var(--canvas);
+    font-family: "Inter", -apple-system, "Helvetica Neue", Arial, sans-serif;
     color: var(--ink);
     display: flex;
     justify-content: center;
@@ -24,15 +39,21 @@
   .card {
     width: 100%;
     max-width: 620px;
-    background: var(--paper);
-    border-radius: 6px;
-    border: 1px solid var(--line);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
+    background: var(--card);
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 24px 48px -20px rgba(0, 0, 0, 0.6);
     overflow: hidden;
   }
+  /* 16mm filmstrip perforation, same construction as the dashboard's CueCard:
+     card-surface holes punched out of the accent rail. */
   .card__band {
-    height: 6px;
-    background: var(--accent);
+    height: 10px;
+    background-color: var(--accent);
+    background-image: radial-gradient(circle, var(--card) 2.75px, transparent 3.25px);
+    background-size: 14px 100%;
+    background-repeat: repeat-x;
+    background-position: 7px center;
   }
   .card__header {
     padding: 32px 36px 20px;
@@ -42,23 +63,32 @@
     border-bottom: 1px solid var(--line);
   }
   .card__eyebrow {
-    font-family: "Helvetica Neue", Arial, sans-serif;
-    font-size: 11px;
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    font-weight: 500;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--muted);
-    margin: 0 0 6px;
+    margin: 0 0 8px;
   }
   .card__city {
-    font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-    font-size: 32px;
+    font-family: "Fraunces", ui-serif, Georgia, serif;
+    font-size: 38px;
     margin: 0;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: -0.01em;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1;
+    color: var(--ink);
+  }
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .card__city {
+      background-image: linear-gradient(180deg, #ffffff 0%, #edebe4 55%, #b6b3a8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
   }
   .card__date {
-    font-family: "Helvetica Neue", Arial, sans-serif;
     font-size: 13px;
     color: var(--muted);
     text-align: right;
@@ -75,8 +105,8 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-family: "Helvetica Neue", Arial, sans-serif;
-    font-size: 11px;
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px;
     letter-spacing: 0.10em;
     text-transform: uppercase;
     color: var(--accent);
@@ -110,7 +140,7 @@
     border-radius: 50%;
     background: var(--accent);
   }
-  ul.avoid li::before { background: #ef1f34; }
+  ul.avoid li::before { background: #f87171; }
   .heat {
     display: flex;
     align-items: center;
@@ -120,27 +150,32 @@
     flex: 1;
     height: 8px;
     border-radius: 999px;
-    background: var(--line);
+    background: rgba(255, 255, 255, 0.1);
     overflow: hidden;
   }
   .heat__fill {
     height: 100%;
-    background: var(--accent);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, white) 0%, var(--accent) 100%);
     border-radius: 999px;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
   }
   .heat__value {
-    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-weight: 700;
     font-size: 14px;
     min-width: 34px;
     text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   .card__footer {
-    font-family: "Helvetica Neue", Arial, sans-serif;
-    font-size: 10.5px;
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
     color: var(--muted);
     padding: 16px 36px 24px;
   }
+  .card__footer .ok { color: #6ee7b7; }
+  .card__footer .flag { color: #fca5a5; }
 </style>
 </head>
 <body>
@@ -212,7 +247,8 @@
     </div>
 
     <div class="card__footer">
-      Generated by the Agentic Tour &amp; Promotion Intelligence OS · grounding check {{ "passed" if grounding_check_passed else "flagged for review" }}
+      Generated by the Agentic Tour &amp; Promotion Intelligence OS · grounding check
+      {% if grounding_check_passed %}<span class="ok">passed</span>{% else %}<span class="flag">flagged for review</span>{% endif %}
     </div>
   </div>
 </body>

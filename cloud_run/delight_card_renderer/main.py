@@ -46,7 +46,9 @@ def _render_html(brief: dict) -> str:
         city_name=brief.get("city_name", brief.get("city_id", "")),
         stop_date=brief.get("stop_date", ""),
         accent_color=_ACCENT_BY_CITY.get(brief.get("city_id"), _DEFAULT_ACCENT),
-        enthusiasm_score=brief.get("enthusiasm_score", 0),
+        # int() because a re-render sourced from BigQuery hands us a float
+        # ("92.0" on the card reads sloppy); scores are conceptually 0-100 ints.
+        enthusiasm_score=int(brief.get("enthusiasm_score") or 0),
         fan_behavior_style=brief.get("fan_behavior_style", ""),
         local_phrases=brief.get("local_phrases", []),
         lean_into=talent_brief.get("lean_into", []),
