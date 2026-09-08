@@ -42,11 +42,21 @@ export function SuggestionChips({ suggestions, onPick }: { suggestions: string[]
   );
 }
 
-/** One chat message bubble. User = solid gold (the app's selection color); assistant = white card on the grey well. */
-export function ChatBubble({ role, children }: { role: "user" | "assistant"; children: ReactNode }) {
+/** One chat message bubble. User = solid gold (the app's selection color);
+ * assistant = card on the grey well, with live-search source links when the
+ * reply was regenerated from a real-time Parallel search. */
+export function ChatBubble({
+  role,
+  children,
+  citations,
+}: {
+  role: "user" | "assistant";
+  children: ReactNode;
+  citations?: { url: string; title: string }[];
+}) {
   return (
     <div className={`flex ${role === "user" ? "justify-end" : "justify-start"}`}>
-      <p
+      <div
         className={`max-w-[85%] px-3 py-2 font-sans text-[12.5px] leading-relaxed ${
           role === "user"
             ? "rounded-lg rounded-br-[2px] bg-gold font-medium text-on-gold shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
@@ -54,7 +64,23 @@ export function ChatBubble({ role, children }: { role: "user" | "assistant"; chi
         }`}
       >
         {children}
-      </p>
+        {citations && citations.length > 0 && (
+          <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-white/[0.07] pt-1.5">
+            <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-muted">Live sources</span>
+            {citations.map((c, i) => (
+              <a
+                key={i}
+                href={c.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10.5px] text-ink-muted underline hover:text-ink"
+              >
+                {c.title || c.url}
+              </a>
+            ))}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

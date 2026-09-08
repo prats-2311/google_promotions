@@ -301,6 +301,9 @@ export interface NewCampaignInput {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  // Present when this assistant reply was regenerated from a live Parallel
+  // search (a current-events question) -- the sources it answered from.
+  citations?: MonitorCitation[];
 }
 
 export interface SuggestedCampaign {
@@ -325,6 +328,7 @@ export interface StrategyChatResponse {
   ready: boolean;
   suggested_campaign: SuggestedCampaign | null;
   franchise_context: FranchiseContext | null;
+  live_citations?: MonitorCitation[];
 }
 
 export interface ProposedCampaignChanges {
@@ -341,6 +345,7 @@ export interface CampaignEditChatResponse {
   ready_to_apply: boolean;
   proposed_changes: ProposedCampaignChanges | null;
   franchise_context: FranchiseContext | null;
+  live_citations?: MonitorCitation[];
 }
 
 export interface UpdatedCampaign {

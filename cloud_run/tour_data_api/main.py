@@ -2483,6 +2483,91 @@ def _franchise_context_search(title: str) -> list[dict]:
     return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
 
 
+class LiveQueryValidationError(ValueError):
+    """A model-proposed live-search query failed validation -- it flows into
+    a Parallel objective, so it gets the same prompt-injection discipline as
+    city_name/country (see CLAUDE.md's input-validation section)."""
+
+
+# Letters (any script), digits, spaces, and light punctuation only -- no
+# braces/brackets/colons/angle-quotes, the raw material of injection attempts.
+_LIVE_QUERY_ALLOWED = re.compile(r"^[\w\s'\.,\-\?]{3,80}$")
+
+
+def _validate_live_query(query) -> str:
+    collapsed = " ".join(str(query or "").split())
+    if not collapsed or not _LIVE_QUERY_ALLOWED.match(collapsed):
+        raise LiveQueryValidationError("live_search_query failed validation")
+    return collapsed
+
+
+def _chat_live_search(query: str) -> list[dict]:
+    """Live Parallel search for a time-sensitive chat question ("what's
+    trending in Tokyo right now?") -- Gemini's training data is months old,
+    so 'current' answers must come from the live web, not from the model."""
+    if not _parallel_client:
+        raise RuntimeError("PARALLEL_API_KEY is not configured on this service")
+    search = _parallel_client.search(
+        objective=(
+            f"The CURRENT, most recent state of: {query}. Prioritize the freshest available "
+            f"sources -- news, events, and social trends from the last days or weeks."
+        ),
+        search_queries=[query, f"{query} this week", f"{query} latest news"],
+        mode="advanced",
+    )
+    return [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+
+
+def _live_context_block(draft: dict) -> tuple[str, list[dict]]:
+    """When pass-1 Gemini flags a current-events question, run the live
+    search and build the regeneration block + citations. Best-effort by
+    contract: any failure (bad query, Parallel error) returns an empty
+    block so the turn degrades to the draft reply instead of failing."""
+    if not draft.get("needs_live_search") or not draft.get("live_search_query"):
+        return "", []
+    try:
+        query = _validate_live_query(draft["live_search_query"])
+        results = _chat_live_search(query)
+    except (LiveQueryValidationError, parallel.APIError, RuntimeError):
+        return "", []
+    if not results:
+        return "", []
+    citations = [{"url": r["url"], "title": r["title"]} for r in results[:4]]
+    excerpts = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in results[:6]
+    )
+    block = (
+        f'\n\nLIVE WEB RESULTS retrieved moments ago for "{query}" -- this is the CURRENT state '
+        f"of the world and overrides anything you believe from training. Answer the user's "
+        f"current-events question from these results, say what they actually report, and never "
+        f"invent beyond them:\n{excerpts}"
+    )
+    return block, citations
+
+
+# Shared schema fragment + prompt line for the live-search trigger in both chats.
+_LIVE_SEARCH_SCHEMA_PROPS = {
+    "needs_live_search": {
+        "type": "BOOLEAN",
+        "nullable": True,
+        "description": "true ONLY when the user asks about current/recent/trending/right-now conditions.",
+    },
+    "live_search_query": {
+        "type": "STRING",
+        "nullable": True,
+        "description": "3-8 word web search keywords for that current-events question, e.g. 'Tokyo trending events this week'.",
+    },
+}
+
+_LIVE_SEARCH_PROMPT_RULE = (
+    "If the user asks about CURRENT, recent, trending, or right-now conditions (news, events, "
+    "festivals, social buzz, 'the atmosphere at the moment'), set needs_live_search=true and put "
+    "a short 3-8 word keyword phrase in live_search_query -- your own knowledge is months old and "
+    "must never be presented as current. For evergreen questions keep needs_live_search=false.\n\n"
+)
+
+
 _FRANCHISE_CONTEXT_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -2592,6 +2677,7 @@ def campaign_strategy_chat():
                 },
                 "required": ["title", "campaign_type", "genre", "talent_roster", "stops"],
             },
+            **_LIVE_SEARCH_SCHEMA_PROPS,
         },
         "required": ["reply", "ready"],
     }
@@ -2638,6 +2724,7 @@ def campaign_strategy_chat():
             "once title, campaign_type, genre, and at least one full stop (city "
             "and date) are all confirmed — never suggest a city_id outside the "
             "supported list above.\n\n"
+            + _LIVE_SEARCH_PROMPT_RULE +
             f"CONVERSATION SO FAR:\n{transcript}{strategy_block}{extra_context}"
         )
 
@@ -2648,6 +2735,7 @@ def campaign_strategy_chat():
 
     result = draft
     franchise_context = prior_franchise_context
+    live_block, live_citations = _live_context_block(draft)
     detected_title = draft.get("detected_title")
     prior_title = (prior_franchise_context or {}).get("title", "")
     needs_research = bool(detected_title) and detected_title.strip().lower() != prior_title.strip().lower()
@@ -2686,7 +2774,7 @@ def campaign_strategy_chat():
                 f"Core themes: {', '.join(fc.get('core_themes') or [])}"
                 f"{culture_block}"
             )
-            result = _call_gemini_json(build_prompt(fc_block), schema)
+            result = _call_gemini_json(build_prompt(fc_block + live_block), schema)
         except (PlaceNameValidationError, parallel.APIError, RuntimeError, requests.HTTPError, KeyError, ValueError):
             # Franchise research is an enrichment, not a required path -- a
             # failure here degrades to the plain draft reply rather than
@@ -2694,11 +2782,20 @@ def campaign_strategy_chat():
             result = draft
             franchise_context = prior_franchise_context
 
+    if live_block and result is draft:
+        # Current-events question without (or after a failed) franchise
+        # research pass -- regenerate from the live excerpts alone.
+        try:
+            result = _call_gemini_json(build_prompt(live_block), schema)
+        except (requests.HTTPError, KeyError, ValueError):
+            result = draft
+
     return jsonify({
         "reply": result.get("reply", ""),
         "ready": bool(result.get("ready")),
         "suggested_campaign": result.get("suggested_campaign"),
         "franchise_context": franchise_context,
+        "live_citations": live_citations,
     })
 
 
@@ -2769,6 +2866,7 @@ def campaign_edit_chat():
                 },
                 "required": ["add_stops", "remove_stop_city_ids"],
             },
+            **_LIVE_SEARCH_SCHEMA_PROPS,
         },
         "required": ["reply", "ready_to_apply"],
     }
@@ -2799,6 +2897,7 @@ def campaign_edit_chat():
             "have a concrete, unambiguous change to make; keep it false while still "
             "clarifying. If a title change is proposed, also set detected_title to the new "
             "title so it can be researched.\n\n"
+            + _LIVE_SEARCH_PROMPT_RULE +
             f"CONVERSATION SO FAR:\n{transcript}{extra_context}"
         )
 
@@ -2809,6 +2908,7 @@ def campaign_edit_chat():
 
     result = draft
     franchise_context = prior_franchise_context
+    live_block, live_citations = _live_context_block(draft)
     detected_title = draft.get("detected_title")
     prior_title = (prior_franchise_context or {}).get("title", "")
     needs_research = bool(detected_title) and detected_title.strip().lower() != prior_title.strip().lower()
@@ -2837,16 +2937,25 @@ def campaign_edit_chat():
                 f"Type: {fc.get('source_type')}\nSynopsis: {fc.get('synopsis')}\n"
                 f"Core themes: {', '.join(fc.get('core_themes') or [])}"
             )
-            result = _call_gemini_json(build_prompt(fc_block), schema)
+            result = _call_gemini_json(build_prompt(fc_block + live_block), schema)
         except (PlaceNameValidationError, parallel.APIError, RuntimeError, requests.HTTPError, KeyError, ValueError):
             result = draft
             franchise_context = prior_franchise_context
+
+    if live_block and result is draft:
+        # Current-events question without (or after a failed) franchise
+        # research pass -- regenerate from the live excerpts alone.
+        try:
+            result = _call_gemini_json(build_prompt(live_block), schema)
+        except (requests.HTTPError, KeyError, ValueError):
+            result = draft
 
     return jsonify({
         "reply": result.get("reply", ""),
         "ready_to_apply": bool(result.get("ready_to_apply")),
         "proposed_changes": result.get("proposed_changes"),
         "franchise_context": franchise_context,
+        "live_citations": live_citations,
     })
 
 

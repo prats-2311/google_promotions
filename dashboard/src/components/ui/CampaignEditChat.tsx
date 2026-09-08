@@ -117,7 +117,14 @@ export function CampaignEditChat({
     setApplied(false);
     try {
       const result = await chatAboutCampaignEdit(campaignId, nextMessages);
-      const withReply: ChatMessage[] = [...nextMessages, { role: "assistant", content: result.reply }];
+      const withReply: ChatMessage[] = [
+        ...nextMessages,
+        {
+          role: "assistant",
+          content: result.reply,
+          ...(result.live_citations?.length ? { citations: result.live_citations } : {}),
+        },
+      ];
       const pending = result.ready_to_apply ? result.proposed_changes : null;
       setMessages(withReply);
       setPendingChanges(pending);
@@ -203,7 +210,7 @@ export function CampaignEditChat({
       {messages.length > 0 && (
         <div className="mb-3 max-h-64 space-y-2.5 overflow-y-auto rounded-lg bg-paper-raised/80 p-3">
           {messages.map((m, i) => (
-            <ChatBubble key={i} role={m.role}>
+            <ChatBubble key={i} role={m.role} citations={m.citations}>
               {m.content}
             </ChatBubble>
           ))}
