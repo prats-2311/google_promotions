@@ -94,6 +94,7 @@ function CulturalDriftCheck({
   label = "Cultural Drift Check",
   icon = RadioTower,
   noDriftMessage,
+  idleMessage,
 }: {
   campaignId: string;
   cityId: string;
@@ -103,6 +104,7 @@ function CulturalDriftCheck({
   label?: string;
   icon?: LucideIcon;
   noDriftMessage?: string;
+  idleMessage?: string;
 }) {
   const [monitorId, setMonitorId] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -174,8 +176,8 @@ function CulturalDriftCheck({
 
       {!checking && events === null && !error && (
         <p className="mt-3 font-sans text-[12.5px] text-ink-muted">
-          This brief reflects real, cited data as of when it was generated. Run a live check against Parallel's
-          continuous monitoring to see whether anything relevant has changed since.
+          {idleMessage ??
+            "This brief reflects real, cited data as of when it was generated. Run a live check against Parallel's continuous monitoring to see whether anything culturally relevant has shifted since."}
         </p>
       )}
 
@@ -311,9 +313,16 @@ function StopOutcomeCheck({
             {outcome.confidence ? ` · ${outcome.confidence} confidence` : ""}
           </p>
           <p className="mt-1.5 font-sans text-[13px] leading-relaxed text-ink">
-            {outcome.outcome_summary ?? outcome.notice ?? "No outcome summary available."}
+            {outcome.outcome_summary ??
+              outcome.notice ??
+              "No verifiable post-show coverage found yet — press and fan reaction can take a few days to surface; re-check later."}
           </p>
-          {outcome.citations.length > 0 && (
+          {/* Citations only accompany a REAL outcome. When the search found
+              nothing (unknown sentiment, no summary), its raw result links
+              are keyword noise (e.g. colleges named like the campaign) --
+              rendering them as "citations" would undercut the whole
+              grounded-data story. */}
+          {Boolean(outcome.outcome_summary) && outcome.sentiment !== "unknown" && outcome.citations.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {outcome.citations.map((c, i) => (
                 <a
@@ -437,6 +446,22 @@ function LocalCrewVendorsCard({ cityName, accent }: { cityName: string; accent: 
 // visas averaging 6-12 months processing -- genuinely computable against a
 // stop_date, unlike most "logistics" facts. Nationality/destination are
 // manual inputs since neither exists anywhere in the campaign schema today.
+// Shared field styling for the operations-check cards -- same crisp
+// treatment as the chat composer (visible border, well surface, gold focus).
+const TOOL_INPUT_CLASS =
+  "w-full rounded-lg border border-ink/15 bg-paper-raised px-2.5 py-2 font-sans text-[12.5px] text-ink outline-none transition-colors placeholder:text-ink-muted/60 focus:border-gold focus:ring-2 focus:ring-gold/25";
+
+function ToolField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block min-w-0 flex-1">
+      <span className="mb-1 block font-mono text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
 function VisaRequirementsCard({ accent }: { accent: string }) {
   const [nationality, setNationality] = useState("");
   const [destination, setDestination] = useState("");
@@ -460,26 +485,30 @@ function VisaRequirementsCard({ accent }: { accent: string }) {
   return (
     <div className="rounded-2xl bg-paper p-6">
       <SectionLabel icon={Stamp} accent={accent} label="Visa & Border Timing" />
-      <div className="mt-3 flex flex-wrap gap-2">
-        <input
-          value={nationality}
-          onChange={(e) => setNationality(e.target.value)}
-          placeholder="Artist nationality (e.g. Canadian)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
-        />
-        <input
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder="Destination country"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
-        />
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <ToolField label="Artist nationality">
+          <input
+            value={nationality}
+            onChange={(e) => setNationality(e.target.value)}
+            placeholder="e.g. Canadian"
+            className={TOOL_INPUT_CLASS}
+          />
+        </ToolField>
+        <ToolField label="Destination country">
+          <input
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder="e.g. India"
+            className={TOOL_INPUT_CLASS}
+          />
+        </ToolField>
         <button
           type="button"
           onClick={handleCheck}
           disabled={loading || !nationality.trim() || !destination.trim()}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-ink/15 px-3 py-2 font-sans text-[11.5px] font-medium text-ink outline-none transition-colors hover:border-gold hover:text-gold focus-visible:ring-2 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          {loading ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Search size={12} aria-hidden />}
           {loading ? "Checking…" : "Check"}
         </button>
       </div>
@@ -547,20 +576,22 @@ function SeasonalWeatherRiskCard({ cityName, accent }: { cityName: string; accen
   return (
     <div className="rounded-2xl bg-paper p-6">
       <SectionLabel icon={CloudRain} accent={accent} label="Seasonal Weather Risk" />
-      <div className="mt-3 flex gap-2">
-        <input
-          value={monthOrDate}
-          onChange={(e) => setMonthOrDate(e.target.value)}
-          placeholder="Month or date (e.g. October)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
-        />
+      <div className="mt-3 flex items-end gap-2">
+        <ToolField label="Month or date of the stop">
+          <input
+            value={monthOrDate}
+            onChange={(e) => setMonthOrDate(e.target.value)}
+            placeholder="e.g. October"
+            className={TOOL_INPUT_CLASS}
+          />
+        </ToolField>
         <button
           type="button"
           onClick={handleCheck}
           disabled={loading || !monthOrDate.trim()}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-ink/15 px-3 py-2 font-sans text-[11.5px] font-medium text-ink outline-none transition-colors hover:border-gold hover:text-gold focus-visible:ring-2 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+          {loading ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Search size={12} aria-hidden />}
           {loading ? "Checking…" : "Check"}
         </button>
       </div>
@@ -652,22 +683,34 @@ function StopSafetyChecklistCard({
   return (
     <div className="rounded-2xl bg-paper p-6">
       <SectionLabel icon={ClipboardCheck} accent={accent} label="Safety Checklist" />
-      <div className="mt-3 space-y-2.5">
-        <label className="flex items-center gap-2 font-sans text-[13px] text-ink">
-          <input type="checkbox" checked={assigned} onChange={(e) => setAssigned(e.target.checked)} />
+      <p className="mt-2 font-sans text-[12px] text-ink-muted">
+        The Showstop Procedure is a named person with explicit authority to stop the show — filled in by the
+        planner, never AI-generated.
+      </p>
+      <div className="mt-3 max-w-md space-y-3">
+        <label className="flex items-center gap-2.5 font-sans text-[13px] text-ink">
+          <input
+            type="checkbox"
+            checked={assigned}
+            onChange={(e) => setAssigned(e.target.checked)}
+            className="size-4 accent-gold"
+          />
           Showstop manager assigned
         </label>
-        <input
-          value={managerName}
-          onChange={(e) => setManagerName(e.target.value)}
-          placeholder="Manager name"
-          className="w-full rounded-lg border border-line bg-transparent px-2.5 py-1.5 font-sans text-[12.5px] text-ink placeholder:text-ink-muted"
-        />
-        <label className="flex items-center gap-2 font-sans text-[13px] text-ink">
+        <ToolField label="Showstop manager name">
+          <input
+            value={managerName}
+            onChange={(e) => setManagerName(e.target.value)}
+            placeholder="e.g. Jordan Blake"
+            className={TOOL_INPUT_CLASS}
+          />
+        </ToolField>
+        <label className="flex items-center gap-2.5 font-sans text-[13px] text-ink">
           <input
             type="checkbox"
             checked={capacityConfirmed}
             onChange={(e) => setCapacityConfirmed(e.target.checked)}
+            className="size-4 accent-gold"
           />
           Venue capacity confirmed with venue
         </label>
@@ -675,18 +718,28 @@ function StopSafetyChecklistCard({
 
       {error && <p className="mt-3 font-sans text-[12px] text-red-300">Couldn't save: {error}</p>}
 
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-3 flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 font-sans text-[11.5px] text-ink transition-colors hover:border-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-        {saving ? "Saving…" : "Save checklist"}
-      </button>
-      {savedAt && !saving && (
-        <p className="mt-2 font-sans text-[11px] text-ink-muted">Last saved {new Date(savedAt).toLocaleString()}</p>
-      )}
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-gold flex items-center gap-1.5 rounded-lg px-3.5 py-2 font-sans text-[12px] font-semibold text-on-gold outline-none focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Check size={12} aria-hidden />}
+          {saving ? "Saving…" : "Save checklist"}
+        </button>
+        {savedAt && !saving && (
+          <p className="font-sans text-[11px] text-ink-muted">
+            Saved{" "}
+            {new Date(savedAt).toLocaleString(undefined, {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -881,25 +934,41 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
       <CardErrorBoundary>
         <LocalCrewVendorsCard cityName={stop.city_name} accent={accent} />
       </CardErrorBoundary>
-      <div className="lg:col-span-2">
-        <CardErrorBoundary>
-          <CulturalDriftCheck campaignId={campaign.campaign_id} cityId={stop.city_id} cityName={stop.city_name} accent={accent} />
-        </CardErrorBoundary>
+
+      {/* The on-demand tools below were a stack of five near-identical
+          full-width slabs -- grouping them under one labeled rule and
+          reflowing to half-width halves the scroll and makes the zone read
+          as a toolbox, not filler. */}
+      <div className="mt-3 flex items-center gap-3 lg:col-span-2" aria-hidden>
+        <span className="h-px flex-1 bg-canvas-line" />
+        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-canvas-muted">
+          Live Operations Checks · real web lookups, on demand
+        </span>
+        <span className="h-px flex-1 bg-canvas-line" />
       </div>
-      <div className="lg:col-span-2">
-        <CardErrorBoundary>
-          <CulturalDriftCheck
-            campaignId={campaign.campaign_id}
-            cityId={stop.city_id}
-            cityName={stop.city_name}
-            accent={accent}
-            monitorType="safety"
-            label="Safety & Logistics Check"
-            icon={ShieldAlert}
-            noDriftMessage={`Checked just now — no notable safety or logistics concerns found for ${stop.city_name}.`}
-          />
-        </CardErrorBoundary>
-      </div>
+
+      <CardErrorBoundary>
+        <CulturalDriftCheck campaignId={campaign.campaign_id} cityId={stop.city_id} cityName={stop.city_name} accent={accent} />
+      </CardErrorBoundary>
+      <CardErrorBoundary>
+        <CulturalDriftCheck
+          campaignId={campaign.campaign_id}
+          cityId={stop.city_id}
+          cityName={stop.city_name}
+          accent={accent}
+          monitorType="safety"
+          label="Safety & Logistics Check"
+          icon={ShieldAlert}
+          idleMessage={`Run a live check for new safety advisories, transit disruptions, or venue-area incidents reported in ${stop.city_name} since this brief was generated.`}
+          noDriftMessage={`Checked just now — no notable safety or logistics concerns found for ${stop.city_name}.`}
+        />
+      </CardErrorBoundary>
+      <CardErrorBoundary>
+        <VisaRequirementsCard accent={accent} />
+      </CardErrorBoundary>
+      <CardErrorBoundary>
+        <SeasonalWeatherRiskCard cityName={stop.city_name} accent={accent} />
+      </CardErrorBoundary>
       <div className="lg:col-span-2">
         <CardErrorBoundary>
           <StopOutcomeCheck
@@ -912,12 +981,6 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
           />
         </CardErrorBoundary>
       </div>
-      <CardErrorBoundary>
-        <VisaRequirementsCard accent={accent} />
-      </CardErrorBoundary>
-      <CardErrorBoundary>
-        <SeasonalWeatherRiskCard cityName={stop.city_name} accent={accent} />
-      </CardErrorBoundary>
       <div className="lg:col-span-2">
         <CardErrorBoundary>
           <StopSafetyChecklistCard campaignId={campaign.campaign_id} cityId={stop.city_id} accent={accent} />
@@ -1097,16 +1160,27 @@ function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) 
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
       <CueCard className="lg:col-span-3" accent={accent} meta={`${data.campaign.title} · Delight Card`}>
         <SectionLabel icon={Sparkles} accent={accent} label="Local Language Moment" />
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 space-y-2.5">
           {localDelight.local_phrases.map((p, i) => {
             const audioUrl = pronunciationAudio?.find((a) => a.phrase === p.phrase)?.audio_url;
             return (
-              <div key={i} className="flex items-center justify-between gap-3 border-b border-line pb-2 last:border-0">
-                <div className="flex items-center gap-2">
+              <div
+                key={i}
+                className="flex items-center justify-between gap-3 rounded-lg bg-paper-raised px-3.5 py-2.5"
+                style={{ borderLeft: `3px solid ${accent}` }}
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
                   {audioUrl && <AudioPlayButton src={audioUrl} accent={accent} />}
-                  <span className="font-display text-[16px] text-ink">{p.phrase}</span>
+                  <div className="min-w-0">
+                    {/* Sentence case, not the mono-uppercase label voice --
+                        these are human words the talent will actually say. */}
+                    <span className="block font-sans text-[15px] font-semibold text-ink">{p.phrase}</span>
+                    {p.phonetic && (
+                      <span className="block font-mono text-[10.5px] text-ink-muted">{p.phonetic}</span>
+                    )}
+                  </div>
                 </div>
-                <span className="text-right font-sans text-[12px] italic text-ink-muted">{p.meaning}</span>
+                <span className="shrink-0 text-right font-sans text-[12px] italic text-ink-muted">{p.meaning}</span>
               </div>
             );
           })}
@@ -1178,7 +1252,9 @@ function BriefTab({ brief, accent, cardUrl }: { brief: TalentBrief | null; accen
         <SectionLabel icon={ThumbsUp} accent={accent} label="Lean Into" />
         <ul className="mt-2 space-y-2">
           {brief.topics_to_lean_into.map((t, i) => (
-            <li key={i} className="font-sans text-[13px] text-ink">{t}</li>
+            <li key={i} className="flex gap-2 font-sans text-[13px] text-ink">
+              <Check size={14} className="mt-0.5 shrink-0 text-emerald-300" aria-hidden /> {t}
+            </li>
           ))}
         </ul>
       </div>
@@ -1186,18 +1262,22 @@ function BriefTab({ brief, accent, cardUrl }: { brief: TalentBrief | null; accen
         <SectionLabel icon={ShieldAlert} accent={accent} label="Avoid" />
         <ul className="mt-2 space-y-2">
           {brief.topics_to_avoid.map((t, i) => (
-            <li key={i} className="font-sans text-[13px] text-ink">{t}</li>
+            <li key={i} className="flex gap-2 font-sans text-[13px] text-ink">
+              <X size={14} className="mt-0.5 shrink-0 text-red-300" aria-hidden /> {t}
+            </li>
           ))}
         </ul>
       </div>
       <div className="rounded-2xl bg-paper p-6">
         <SectionLabel icon={Mic2} accent={accent} label="Pronounceable Local Lines" />
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-2 space-y-2.5">
           {brief.pronounceable_local_lines.map((line, i) => {
             const n = normalizeLine(line);
             return (
-              <li key={i} className="font-sans text-[13px] text-ink">
-                {n.phrase} {n.meaning && <span className="italic text-ink-muted">— {n.meaning}</span>}
+              <li key={i} className="flex items-baseline gap-2 font-sans text-[13.5px] text-ink">
+                <span className="size-1.5 shrink-0 self-center rounded-full" style={{ backgroundColor: accent }} aria-hidden />
+                <span className="font-medium">{n.phrase}</span>
+                {n.meaning && <span className="italic text-[12px] text-ink-muted">— {n.meaning}</span>}
               </li>
             );
           })}
@@ -1205,14 +1285,17 @@ function BriefTab({ brief, accent, cardUrl }: { brief: TalentBrief | null; accen
       </div>
       <div className="rounded-2xl bg-paper p-6 lg:col-span-2">
         <SectionLabel icon={MessageCircleQuestion} accent={accent} label="Likely Fan Questions & Talking Points" />
-        <ul className="mt-2 space-y-3">
+        <ul className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-2">
           {brief.high_probability_fan_questions.map((q, i) => {
             const n = normalizeFanQuestion(q);
             return (
-              <li key={i} className="border-t border-line pt-3 first:border-0 first:pt-0">
-                <p className="font-sans text-[13px] font-medium text-ink">{n.question}</p>
+              <li key={i} className="rounded-lg bg-paper-raised p-3.5">
+                <p className="font-sans text-[13px] font-medium text-ink">"{n.question}"</p>
                 {n.suggested_response && (
-                  <p className="mt-1 font-sans text-[12.5px] leading-relaxed text-ink-muted">
+                  <p
+                    className="mt-1.5 border-l-2 pl-2.5 font-sans text-[12.5px] leading-relaxed text-ink-muted"
+                    style={{ borderColor: accent }}
+                  >
                     {n.suggested_response}
                   </p>
                 )}

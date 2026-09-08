@@ -114,33 +114,70 @@
     font-weight: 700;
   }
   .section__label svg { width: 14px; height: 14px; stroke: var(--accent); }
-  .phrase-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 7px 0;
-    font-size: 15px;
+  /* Local phrases as flashcards -- the emotional core of the card (the
+     thing the talent actually says on stage) gets the hero treatment, not
+     table rows. */
+  .phrase-card {
+    background: var(--well);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 11px 14px;
+    margin: 8px 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
-  .phrase-row__phrase { font-weight: 600; }
-  .phrase-row__meaning { color: var(--muted); font-style: italic; font-size: 13.5px; }
+  .phrase-card__phrase { font-size: 16.5px; font-weight: 600; margin: 0; }
+  .phrase-card__sub { margin: 3px 0 0; font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .phrase-card__phonetic { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10.5px; letter-spacing: 0.02em; }
+  .phrase-card__meaning { font-style: italic; }
+
+  /* Lean Into / Avoid share one row -- halves the card's length and lets
+     the do/don't contrast read side by side. */
+  .twocol {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 28px;
+  }
+  @media (max-width: 560px) { .twocol { grid-template-columns: 1fr; } }
   ul.plain { margin: 0; padding: 0; list-style: none; }
   ul.plain li {
-    padding: 5px 0 5px 18px;
+    padding: 5px 0 5px 22px;
     position: relative;
-    font-size: 15px;
+    font-size: 14.5px;
     line-height: 1.45;
   }
   ul.plain li::before {
-    content: "";
+    content: "✓";
     position: absolute;
     left: 0;
-    top: 13px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
+    top: 5px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #34d399;
   }
-  ul.avoid li::before { background: #f87171; }
+  ul.avoid li::before { content: "✕"; color: #f87171; }
+
+  /* Fan questions as quote chips, not another bullet list. */
+  .q {
+    background: var(--well);
+    border-radius: 10px;
+    padding: 9px 14px 9px 30px;
+    margin: 8px 0;
+    font-size: 14px;
+    line-height: 1.45;
+    position: relative;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .q::before {
+    content: "\201C";
+    position: absolute;
+    left: 12px;
+    top: 6px;
+    font-family: "Fraunces", ui-serif, Georgia, serif;
+    font-size: 20px;
+    color: var(--accent);
+  }
   .heat {
     display: flex;
     align-items: center;
@@ -176,6 +213,33 @@
   }
   .card__footer .ok { color: #6ee7b7; }
   .card__footer .flag { color: #fca5a5; }
+
+  /* This artifact is explicitly "printable" (the app links it as such) --
+     printing the dark theme would be an ink disaster, so print flips to a
+     light paper card while keeping the accent identity. */
+  @media print {
+    :root {
+      --canvas: #ffffff;
+      --card: #ffffff;
+      --well: #f4f2ec;
+      --ink: #161511;
+      --line: rgba(20, 20, 17, 0.14);
+      --muted: rgba(20, 20, 17, 0.6);
+    }
+    body { background: #ffffff; padding: 0; }
+    .card { box-shadow: none; border-color: rgba(20, 20, 17, 0.16); border-radius: 0; }
+    .card__band {
+      background-image: radial-gradient(circle, #ffffff 2.75px, transparent 3.25px);
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+    .card__city { background-image: none; -webkit-background-clip: initial; background-clip: initial; color: var(--ink); }
+    .heat__fill { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    ul.plain li::before { color: #0c7a4d; }
+    ul.avoid li::before { color: #c22f2f; }
+    .card__footer .ok { color: #0c7a4d; }
+    .card__footer .flag { color: #c22f2f; }
+  }
 </style>
 </head>
 <body>
@@ -208,31 +272,37 @@
           Local Language Moment
         </p>
         {% for p in local_phrases %}
-        <div class="phrase-row">
-          <span class="phrase-row__phrase">{{ p.phrase }}</span>
-          <span class="phrase-row__meaning">{{ p.meaning }}</span>
+        <div class="phrase-card">
+          <p class="phrase-card__phrase">{{ p.phrase }}</p>
+          <p class="phrase-card__sub">
+            {% if p.phonetic %}<span class="phrase-card__phonetic">{{ p.phonetic }}</span>{% endif %}
+            {% if p.meaning %}<span class="phrase-card__meaning">{{ p.meaning }}</span>{% endif %}
+          </p>
         </div>
         {% endfor %}
       </div>
 
       <div class="section">
-        <p class="section__label">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
-          Lean Into
-        </p>
-        <ul class="plain">
-          {% for item in lean_into %}<li>{{ item }}</li>{% endfor %}
-        </ul>
-      </div>
-
-      <div class="section">
-        <p class="section__label">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-          Avoid
-        </p>
-        <ul class="plain avoid">
-          {% for item in avoid_list %}<li>{{ item }}</li>{% endfor %}
-        </ul>
+        <div class="twocol">
+          <div>
+            <p class="section__label">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
+              Lean Into
+            </p>
+            <ul class="plain">
+              {% for item in lean_into %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
+          <div>
+            <p class="section__label">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+              Avoid
+            </p>
+            <ul class="plain avoid">
+              {% for item in avoid_list %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
       </div>
 
       <div class="section">
@@ -240,9 +310,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 20l1.3-3.9A7.9 7.9 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
           Likely Fan Questions
         </p>
-        <ul class="plain">
-          {% for q in fan_questions %}<li>{{ q }}</li>{% endfor %}
-        </ul>
+        {% for q in fan_questions %}<div class="q">{{ q }}</div>{% endfor %}
       </div>
     </div>
 
