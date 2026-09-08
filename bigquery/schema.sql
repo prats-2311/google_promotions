@@ -213,3 +213,16 @@ ALTER TABLE `tour_intelligence.campaign_stops`
 
 ALTER TABLE `tour_intelligence.campaign_stops`
   ADD COLUMN IF NOT EXISTS removed BOOL;
+
+-- Server-backed assistant chat history (2026-09-09): the strategy chat and
+-- the campaign edit chat persist their transcript + context here so a
+-- conversation survives across devices, not just refreshes (localStorage
+-- remains the fast first tier). Insert-only latest-wins, same pattern as
+-- campaigns/city_briefs: every save is a new row, reads take the newest
+-- updated_at per session_key -- never UPDATE (streaming buffer).
+CREATE TABLE IF NOT EXISTS `tour_intelligence.chat_sessions` (
+  session_key STRING NOT NULL,
+  messages_json STRING,
+  context_json STRING,
+  updated_at TIMESTAMP
+);

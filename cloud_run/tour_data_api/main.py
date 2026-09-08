@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import datetime
 import hashlib
+import json
 import io
 import os
 import re
@@ -1814,6 +1815,63 @@ def remove_campaign_stop():
     if errors:
         return jsonify({"error": "insert failed", "details": errors}), 500
     return jsonify({"campaign_id": campaign_id, "city_id": city_id, "status": "removed"})
+
+
+@app.get("/chat_session")
+def get_chat_session():
+    """Latest saved assistant-chat session for a session_key ("strategy:default",
+    "edit:<campaign_id>") -- server-side history so a conversation survives
+    across devices, not just refreshes. Insert-only latest-wins reads, same
+    QUALIFY pattern as campaigns."""
+    session_key = request.args.get("session_key")
+    if not session_key:
+        return jsonify({"error": "missing required query param: session_key"}), 400
+    rows = _query(
+        f"SELECT session_key, messages_json, context_json, updated_at "
+        f"FROM `{_DATASET}.chat_sessions` WHERE session_key = @session_key "
+        f"QUALIFY ROW_NUMBER() OVER (PARTITION BY session_key ORDER BY updated_at DESC) = 1",
+        [bigquery.ScalarQueryParameter("session_key", "STRING", session_key)],
+    )
+    if not rows:
+        return jsonify({"session_key": session_key, "messages": [], "context": None, "updated_at": None})
+    row = rows[0]
+
+    def _loads(raw):
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+
+    return jsonify({
+        "session_key": session_key,
+        "messages": _loads(row["messages_json"]) or [],
+        "context": _loads(row["context_json"]),
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+    })
+
+
+@app.post("/chat_session")
+def save_chat_session():
+    """Persists a chat session as a NEW row (never UPDATE -- streaming
+    buffer, see bigquery/CLAUDE.md); the newest updated_at per session_key
+    wins at read time."""
+    payload = request.get_json(silent=True) or {}
+    session_key = payload.get("session_key")
+    messages = payload.get("messages")
+    if not session_key or messages is None:
+        return jsonify({"error": "missing required field(s): session_key, messages"}), 400
+    row = {
+        "session_key": session_key,
+        "messages_json": json.dumps(messages),
+        "context_json": json.dumps(payload.get("context")) if payload.get("context") is not None else None,
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.chat_sessions", [row])
+    if errors:
+        return jsonify({"error": "insert failed", "details": errors}), 500
+    return jsonify({"session_key": session_key, "status": "saved"})
 
 
 @app.post("/campaign_stops")

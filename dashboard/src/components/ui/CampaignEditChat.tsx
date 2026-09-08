@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
-import { addCampaignStops, chatAboutCampaignEdit, removeCampaignStop, updateCampaign } from "../../lib/api";
+import { addCampaignStops, chatAboutCampaignEdit, getChatSession, removeCampaignStop, saveChatSession, updateCampaign } from "../../lib/api";
 import type { ChatMessage, ProposedCampaignChanges } from "../../lib/types";
 import { CueCard } from "./CueCard";
 import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
@@ -68,6 +68,31 @@ export function CampaignEditChat({
     null
   );
 
+  // Server tier: on mount, adopt a session saved from another device when
+  // this browser has nothing local; every turn below pushes fire-and-forget.
+  const sessionKey = `edit:${campaignId}`;
+  useEffect(() => {
+    let cancelled = false;
+    getChatSession(sessionKey)
+      .then((s) => {
+        if (cancelled || s.messages.length === 0) return;
+        setMessages((local) => (local.length > 0 ? local : s.messages));
+        const ctx = s.context as { pending_changes?: ProposedCampaignChanges | null } | null;
+        if (ctx?.pending_changes) {
+          setPendingChanges((local) => local ?? ctx.pending_changes ?? null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function pushSession(nextMessages: ChatMessage[], pending: ProposedCampaignChanges | null) {
+    void saveChatSession(sessionKey, nextMessages, { pending_changes: pending }).catch(() => {});
+  }
+
   function startOver() {
     setMessages([]);
     setPendingChanges(null);
@@ -75,6 +100,7 @@ export function CampaignEditChat({
     setError(null);
     setApplyError(null);
     clearPersistentState(`edit-chat:${campaignId}:messages`, `edit-chat:${campaignId}:pending`);
+    pushSession([], null);
   }
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -91,8 +117,11 @@ export function CampaignEditChat({
     setApplied(false);
     try {
       const result = await chatAboutCampaignEdit(campaignId, nextMessages);
-      setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
-      setPendingChanges(result.ready_to_apply ? result.proposed_changes : null);
+      const withReply: ChatMessage[] = [...nextMessages, { role: "assistant", content: result.reply }];
+      const pending = result.ready_to_apply ? result.proposed_changes : null;
+      setMessages(withReply);
+      setPendingChanges(pending);
+      pushSession(withReply, pending);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -128,6 +157,7 @@ export function CampaignEditChat({
       }
       setPendingChanges(null);
       setApplied(true);
+      pushSession(messages, null);
       onApplied();
     } catch (err) {
       setApplyError(String(err));

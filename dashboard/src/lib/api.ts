@@ -15,6 +15,27 @@ export function getCampaignOverview(campaignId: string) {
   return getJson<CampaignOverview>(`/api/campaigns/${campaignId}/overview`);
 }
 
+// Server tier of the two-tier assistant-chat history (localStorage is the
+// instant tier): read on mount to adopt a session started on another
+// device; written fire-and-forget after every turn -- sync must never
+// break the chat itself.
+export function getChatSession(sessionKey: string) {
+  return getJson<{ session_key: string; messages: ChatMessage[]; context: unknown; updated_at: string | null }>(
+    `/api/chat-session?session_key=${encodeURIComponent(sessionKey)}`
+  );
+}
+
+export async function saveChatSession(sessionKey: string, messages: ChatMessage[], context: unknown = null) {
+  const res = await fetch("/api/chat-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_key: sessionKey, messages, context }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`chat-session save failed: ${res.status}`);
+  return res.json() as Promise<{ session_key: string; status: string }>;
+}
+
 // Assembles + renders the whole-campaign executive tour book (the boss-facing
 // document) -- the BFF gathers every stop's real data and the renderer
 // service lays it out; nothing is generated at render time. 60s timeout: it

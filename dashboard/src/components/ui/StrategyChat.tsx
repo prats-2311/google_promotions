@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Paperclip, RotateCcw, Search, Send, Sparkles, X } from "lucide-react";
-import { chatAboutStrategy } from "../../lib/api";
+import { chatAboutStrategy, getChatSession, saveChatSession } from "../../lib/api";
 import type { ChatMessage, FranchiseContext, SuggestedCampaign } from "../../lib/types";
 import { CueCard } from "./CueCard";
 import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
@@ -34,6 +34,35 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
     null
   );
 
+  // Server tier of the history (localStorage above is the instant tier):
+  // adopt another device's session when local is empty; push every turn.
+  const sessionKey = "strategy:default";
+  useEffect(() => {
+    let cancelled = false;
+    getChatSession(sessionKey)
+      .then((s) => {
+        if (cancelled || s.messages.length === 0) return;
+        setMessages((local) => (local.length > 0 ? local : s.messages));
+        const ctx = s.context as { franchise_context?: FranchiseContext | null; doc_text?: string | null; doc_name?: string | null } | null;
+        if (ctx?.franchise_context) setFranchiseContext((local) => local ?? ctx.franchise_context ?? null);
+        if (ctx?.doc_text) setStrategyText((local) => local ?? ctx.doc_text ?? null);
+        if (ctx?.doc_name) setStrategyFileName((local) => local ?? ctx.doc_name ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function pushSession(nextMessages: ChatMessage[], fc: FranchiseContext | null, docText: string | null, docName: string | null) {
+    void saveChatSession(sessionKey, nextMessages, {
+      franchise_context: fc,
+      doc_text: docText,
+      doc_name: docName,
+    }).catch(() => {});
+  }
+
   function startOver() {
     setMessages([]);
     setFranchiseContext(null);
@@ -47,6 +76,7 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
       "strategy-chat:doc-name",
       "strategy-chat:franchise"
     );
+    pushSession([], null, null, null);
   }
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,8 +107,10 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
     setError(null);
     try {
       const result = await chatAboutStrategy(nextMessages, strategyText, franchiseContext);
-      setMessages((prev) => [...prev, { role: "assistant", content: result.reply }]);
+      const withReply: ChatMessage[] = [...nextMessages, { role: "assistant", content: result.reply }];
+      setMessages(withReply);
       setFranchiseContext(result.franchise_context);
+      pushSession(withReply, result.franchise_context, strategyText, strategyFileName);
       // Fill the form live from every partial suggestion, not only once the
       // whole campaign is ready -- applySuggestion itself never overwrites a
       // field the user has already typed/toggled by hand.

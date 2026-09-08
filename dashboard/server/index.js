@@ -19,7 +19,13 @@ const RUN_JOBS_API =
 // request would add real latency either way.
 let cachedToken = null;
 let cachedAt = 0;
-const TOKEN_TTL_MS = 45 * 60 * 1000;
+// 10 min, not 45: the metadata server returns tokens from its own cache
+// with whatever lifetime they have LEFT (sometimes minutes), so a long
+// client-side TTL can outlive the token itself -- seen live 2026-09-09 as
+// 401s from tour_data_api once instances stopped being recycled by
+// constant redeploys. callTool also retries once on 401/403 with a forced
+// refresh, which is the real safety net.
+const TOKEN_TTL_MS = 10 * 60 * 1000;
 
 async function fetchMetadataServerToken() {
   const url = `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(TOUR_DATA_API)}`;
@@ -103,7 +109,7 @@ async function getAccessToken() {
 // synthesis, finishes well under this) but still bounds every hang.
 const CALL_TOOL_TIMEOUT_MS = 30000;
 
-async function callTool(path, options = {}) {
+async function callTool(path, options = {}, _retried = false) {
   const res = await fetch(`${TOUR_DATA_API}${path}`, {
     ...options,
     signal: options.signal ?? AbortSignal.timeout(CALL_TOOL_TIMEOUT_MS),
@@ -112,6 +118,13 @@ async function callTool(path, options = {}) {
       Authorization: `Bearer ${await getIdentityToken()}`,
     },
   });
+  if ((res.status === 401 || res.status === 403) && !_retried) {
+    // Cached token outlived its actual validity (see TOKEN_TTL_MS note) --
+    // force a refresh and retry exactly once.
+    cachedToken = null;
+    cachedAt = 0;
+    return callTool(path, options, true);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`${path} failed (${res.status}): ${text}`);
@@ -377,6 +390,33 @@ app.post("/api/campaign-edit-chat", async (req, res) => {
   }
 });
 
+// Server tier of the two-tier chat history (localStorage is the instant
+// tier): deliberately NOT cachedCallTool -- a session read must reflect the
+// latest save, and the writes are the user's own conversation.
+app.get("/api/chat-session", async (req, res) => {
+  try {
+    const key = req.query.session_key;
+    if (!key) return res.status(400).json({ error: "missing session_key" });
+    res.json(await callTool(`/chat_session?session_key=${encodeURIComponent(key)}`));
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+app.post("/api/chat-session", async (req, res) => {
+  try {
+    res.json(
+      await callTool("/chat_session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      })
+    );
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
   try {
     const { campaignId } = req.params;
@@ -533,15 +573,22 @@ app.post("/api/tour-book", async (req, res) => {
       cities,
     };
 
-    const renderRes = await fetch(`${DELIGHT_RENDERER}/tour_book`, {
-      method: "POST",
-      signal: AbortSignal.timeout(60000),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${await getRendererToken()}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    let renderRes;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      renderRes = await fetch(`${DELIGHT_RENDERER}/tour_book`, {
+        method: "POST",
+        signal: AbortSignal.timeout(60000),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${await getRendererToken()}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (renderRes.status !== 401 && renderRes.status !== 403) break;
+      // stale cached renderer token -- refresh once (see TOKEN_TTL_MS note)
+      cachedRendererToken = null;
+      cachedRendererAt = 0;
+    }
     if (!renderRes.ok) {
       throw new Error(`tour book render failed (${renderRes.status}): ${await renderRes.text()}`);
     }
