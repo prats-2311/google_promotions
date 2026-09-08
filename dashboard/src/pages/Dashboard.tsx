@@ -237,6 +237,7 @@ export function Dashboard() {
 
       {editOpen && (
         <CampaignEditChat
+          key={activeCampaignId}
           campaignId={activeCampaignId}
           onClose={() => setEditOpen(false)}
           onApplied={() => queryClient.invalidateQueries({ queryKey: ["campaignOverview", activeCampaignId] })}

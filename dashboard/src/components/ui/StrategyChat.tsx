@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { Loader2, Paperclip, Search, Send, Sparkles, X } from "lucide-react";
+import { Loader2, Paperclip, RotateCcw, Search, Send, Sparkles, X } from "lucide-react";
 import { chatAboutStrategy } from "../../lib/api";
 import type { ChatMessage, FranchiseContext, SuggestedCampaign } from "../../lib/types";
 import { CueCard } from "./CueCard";
 import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
+import { usePersistentState, clearPersistentState } from "../../lib/usePersistentState";
 
 // .txt/.md only, read client-side via FileReader -- no multer/multipart on
 // the server (none installed today), no PDF parsing. A clean later add, not
@@ -17,14 +18,36 @@ const STRATEGY_SUGGESTIONS = [
 ];
 
 export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: SuggestedCampaign) => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Conversation, franchise research, and any attached strategy doc are
+  // persisted -- a refresh or dropped connection mid-planning must not eat
+  // the chat (a real reported failure), and re-fetching the research would
+  // cost a second live Parallel+Gemini round for identical input.
+  const [messages, setMessages] = usePersistentState<ChatMessage[]>("strategy-chat:messages", []);
   const [input, setInput] = useState("");
-  const [strategyText, setStrategyText] = useState<string | null>(null);
-  const [strategyFileName, setStrategyFileName] = useState<string | null>(null);
+  const [strategyText, setStrategyText] = usePersistentState<string | null>("strategy-chat:doc-text", null);
+  const [strategyFileName, setStrategyFileName] = usePersistentState<string | null>("strategy-chat:doc-name", null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
-  const [franchiseContext, setFranchiseContext] = useState<FranchiseContext | null>(null);
+  const [franchiseContext, setFranchiseContext] = usePersistentState<FranchiseContext | null>(
+    "strategy-chat:franchise",
+    null
+  );
+
+  function startOver() {
+    setMessages([]);
+    setFranchiseContext(null);
+    setStrategyText(null);
+    setStrategyFileName(null);
+    setApplied(false);
+    setError(null);
+    clearPersistentState(
+      "strategy-chat:messages",
+      "strategy-chat:doc-text",
+      "strategy-chat:doc-name",
+      "strategy-chat:franchise"
+    );
+  }
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -84,9 +107,20 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
       <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted">
         AI co-planner · grounded with live web research
       </p>
-      <div className="mb-1.5 flex items-center gap-2">
-        <Sparkles size={15} className="text-gold" aria-hidden />
-        <p className="font-display text-[16px] text-ink">Draft with an assistant</p>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles size={15} className="text-gold" aria-hidden />
+          <p className="font-display text-[16px] text-ink">Draft with an assistant</p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={startOver}
+            className="flex items-center gap-1.5 rounded font-sans text-[11px] text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
+          >
+            <RotateCcw size={11} aria-hidden /> Start over
+          </button>
+        )}
       </div>
       <p className="mb-4 font-sans text-[12.5px] text-ink-muted">
         Paste or attach an existing strategy, or just describe the tour — the form below will

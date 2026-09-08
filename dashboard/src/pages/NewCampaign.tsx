@@ -6,6 +6,7 @@ import { createCampaign, discoverVenues, getGenreRecommendations, listCities } f
 import { useCampaignContext } from "../lib/campaignContext";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StrategyChat } from "../components/ui/StrategyChat";
+import { usePersistentState, clearPersistentState } from "../lib/usePersistentState";
 import type { DiscoveredVenue, SuggestedCampaign } from "../lib/types";
 
 const GENRE_DEBOUNCE_MS = 500;
@@ -235,12 +236,16 @@ export function NewCampaign() {
   const { data: citiesData } = useQuery({ queryKey: ["cities"], queryFn: listCities });
   const cities = citiesData?.cities ?? [];
 
-  const [title, setTitle] = useState("");
-  const [campaignType, setCampaignType] = useState(CAMPAIGN_TYPES[0].value);
-  const [genre, setGenre] = useState("");
-  const [talentRoster, setTalentRoster] = useState("");
-  const [stops, setStops] = useState<StopEntry[]>([]);
-  const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
+  // The entire draft is persisted -- the assistant may have researched and
+  // pre-filled half this form, and a refresh or dropped connection must
+  // resume exactly where the planner left off (cleared only on successful
+  // create, alongside the strategy chat's own persisted history).
+  const [title, setTitle] = usePersistentState("new-campaign:title", "");
+  const [campaignType, setCampaignType] = usePersistentState("new-campaign:type", CAMPAIGN_TYPES[0].value);
+  const [genre, setGenre] = usePersistentState("new-campaign:genre", "");
+  const [talentRoster, setTalentRoster] = usePersistentState("new-campaign:roster", "");
+  const [stops, setStops] = usePersistentState<StopEntry[]>("new-campaign:stops", []);
+  const [selectedMetrics, setSelectedMetrics] = usePersistentState<string[]>("new-campaign:metrics", []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // What the assistant last suggested for each field -- lets applySuggestion
@@ -248,7 +253,7 @@ export function NewCampaign() {
   // still matches what was last suggested, safe to update live." Without
   // this, live partial fill-in would either never touch a field again after
   // the first suggestion, or blindly stomp on a manual edit every turn.
-  const [lastSuggested, setLastSuggested] = useState<SuggestedCampaign | null>(null);
+  const [lastSuggested, setLastSuggested] = usePersistentState<SuggestedCampaign | null>("new-campaign:last-suggested", null);
 
   function toggleCity(cityId: string) {
     setStops((prev) =>
@@ -357,6 +362,19 @@ export function NewCampaign() {
       // active -- otherwise campaignContext's self-heal effect sees the
       // brand-new campaign missing from the still-stale list and reverts
       // straight back to whichever campaign was active before.
+      clearPersistentState(
+        "new-campaign:title",
+        "new-campaign:type",
+        "new-campaign:genre",
+        "new-campaign:roster",
+        "new-campaign:stops",
+        "new-campaign:metrics",
+        "new-campaign:last-suggested",
+        "strategy-chat:messages",
+        "strategy-chat:doc-text",
+        "strategy-chat:doc-name",
+        "strategy-chat:franchise"
+      );
       await refresh();
       setActiveCampaignId(result.campaign_id);
       navigate("/");

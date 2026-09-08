@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Check, Loader2, Send, Sparkles, X } from "lucide-react";
+import { Check, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { addCampaignStops, chatAboutCampaignEdit, removeCampaignStop, updateCampaign } from "../../lib/api";
 import type { ChatMessage, ProposedCampaignChanges } from "../../lib/types";
 import { CueCard } from "./CueCard";
 import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
+import { usePersistentState, clearPersistentState } from "../../lib/usePersistentState";
 
 // Real writes to a live, already-created campaign -- unlike NewCampaign's
 // StrategyChat (which only pre-fills a local draft form the user still
@@ -54,11 +55,27 @@ export function CampaignEditChat({
   onApplied: () => void;
   onClose: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Persisted per campaign: a refresh mid-edit must not eat the
+  // conversation or a proposed-but-not-yet-applied change set. The parent
+  // passes key={campaignId}, so switching campaigns remounts this with the
+  // right history (see usePersistentState's key-change note).
+  const [messages, setMessages] = usePersistentState<ChatMessage[]>(`edit-chat:${campaignId}:messages`, []);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingChanges, setPendingChanges] = useState<ProposedCampaignChanges | null>(null);
+  const [pendingChanges, setPendingChanges] = usePersistentState<ProposedCampaignChanges | null>(
+    `edit-chat:${campaignId}:pending`,
+    null
+  );
+
+  function startOver() {
+    setMessages([]);
+    setPendingChanges(null);
+    setApplied(false);
+    setError(null);
+    setApplyError(null);
+    clearPersistentState(`edit-chat:${campaignId}:messages`, `edit-chat:${campaignId}:pending`);
+  }
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
@@ -125,14 +142,25 @@ export function CampaignEditChat({
         <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-muted">
           AI assistant · nothing writes until you apply
         </p>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded p-0.5 text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
-        >
-          <X size={14} aria-hidden />
-        </button>
+        <div className="flex items-center gap-3">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={startOver}
+              className="flex items-center gap-1.5 rounded font-sans text-[11px] text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
+            >
+              <RotateCcw size={11} aria-hidden /> New chat
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded p-0.5 text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
+          >
+            <X size={14} aria-hidden />
+          </button>
+        </div>
       </div>
       <div className="mb-1.5 flex items-center gap-2">
         <Sparkles size={15} className="text-gold" aria-hidden />
