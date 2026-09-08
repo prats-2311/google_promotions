@@ -714,7 +714,9 @@ def _run_city_safe(
         try:
             url = run_city(
                 city_id, stop["city_name"], campaign_id, stop["stop_date"], campaign_title,
-                selected_metrics, stop.get("venue_url"),
+                # A stop's own metric override (campaign_stops.stop_metrics)
+                # beats the campaign-level selection when present.
+                stop.get("stop_metrics") or selected_metrics, stop.get("venue_url"),
             )
         except Exception as e:
             print(f"[{city_id}] attempt {attempt + 1} FAILED with an unhandled exception: {e}")

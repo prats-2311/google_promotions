@@ -1761,7 +1761,7 @@ def _get_current_stops(campaign_id: str) -> list[dict]:
         f"  WHERE s.campaign_id = @campaign_id "
         f"  QUALIFY ROW_NUMBER() OVER (PARTITION BY s.campaign_id, s.city_id ORDER BY s.updated_at DESC) = 1"
         f") "
-        f"SELECT city_id, city_name, stop_date, sequence_order, event_format, venue_url "
+        f"SELECT city_id, city_name, stop_date, sequence_order, event_format, venue_url, stop_metrics "
         f"FROM latest WHERE removed IS NOT TRUE ORDER BY sequence_order",
         [bigquery.ScalarQueryParameter("campaign_id", "STRING", campaign_id)],
     )
@@ -1917,6 +1917,7 @@ def create_campaign_stops():
             "updated_at": now,
             "removed": False,
             "venue_url": s.get("venue_url"),
+            "stop_metrics": s.get("stop_metrics") or [],
         })
     errors = _bq.insert_rows_json(f"{_bq.project}.{_DATASET}.campaign_stops", rows)
     if errors:
@@ -2447,7 +2448,18 @@ def genre_recommendations():
     })
 
 
-_SUPPORTED_CAMPAIGN_TYPES = ["film_promo_tour", "music_world_tour"]
+# Fan-signal seed data covers musician/film_cast artist types; the newer
+# types fall back to the closest artist_type for signal lookups and to the
+# driver's documented low-confidence default when no curated row exists --
+# graceful, not a hard requirement.
+_SUPPORTED_CAMPAIGN_TYPES = [
+    "film_promo_tour",
+    "music_world_tour",
+    "series_promo_tour",
+    "book_tour",
+    "comedy_tour",
+    "game_launch_tour",
+]
 
 # Titles legitimately need punctuation _validate_place_name doesn't allow
 # (colons, ampersands, "2049") -- but this still flows into a Parallel
@@ -2566,6 +2578,94 @@ _LIVE_SEARCH_PROMPT_RULE = (
     "a short 3-8 word keyword phrase in live_search_query -- your own knowledge is months old and "
     "must never be presented as current. For evergreen questions keep needs_live_search=false.\n\n"
 )
+
+
+class MetricNameValidationError(ValueError):
+    """A user-named custom metric failed validation -- it flows into a
+    Parallel objective and a Gemini prompt, same injection discipline as
+    city_name/live_search_query."""
+
+
+_METRIC_NAME_ALLOWED = re.compile(r"^[\w\s'%\.,\-/]{2,60}$")
+
+
+def _validate_metric_name(metric) -> str:
+    collapsed = " ".join(str(metric or "").split())
+    if not collapsed or not _METRIC_NAME_ALLOWED.match(collapsed):
+        raise MetricNameValidationError("metric name failed validation")
+    return collapsed
+
+
+_LIVE_METRIC_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "value": {"type": "STRING", "nullable": True,
+                  "description": "The metric's value with units, e.g. '~550 screens' or '62%'. null if the excerpts don't establish one."},
+        "note": {"type": "STRING", "nullable": True},
+        "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+    },
+    "required": ["confidence"],
+}
+
+
+@app.post("/live_metric_search")
+def live_metric_search():
+    """Resolve a campaigner's CUSTOM key metric ("cinema screens per capita",
+    "EV charging stations") for a city via live Parallel search + a
+    schema-constrained Gemini synthesis -- the same search->synthesize->cite
+    pattern as every other live route. Zero results short-circuits to an
+    honest unknown before any Gemini spend."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        city_name = _validate_place_name(payload.get("city_name") or "", "city_name")
+        metric = _validate_metric_name(payload.get("metric"))
+    except (PlaceNameValidationError, MetricNameValidationError) as e:
+        return jsonify({"error": str(e)}), 400
+    if not _parallel_client:
+        return jsonify({"error": "PARALLEL_API_KEY is not configured on this service"}), 500
+
+    queries = [f"{metric} {city_name}", f"{city_name} {metric} statistics", f"{metric} {city_name} 2026"]
+    try:
+        search = _parallel_client.search(
+            objective=(
+                f'The current best available figure or state of "{metric}" for {city_name}, '
+                f"for an entertainment-tour marketing planner sizing the market."
+            ),
+            search_queries=queries,
+            mode="advanced",
+        )
+    except parallel.APIError as e:
+        return jsonify({"error": f"Parallel search failed: {e}"}), 502
+
+    results = [{"url": r.url, "title": r.title, "excerpts": r.excerpts} for r in search.results]
+    citations = [{"url": r["url"], "title": r["title"]} for r in results[:4]]
+    if not results:
+        return jsonify({
+            "source": "parallel_live", "metric": metric, "city_name": city_name,
+            "value": None, "note": "No live sources found for this metric.",
+            "confidence": "low", "citations": [], "search_queries_used": queries,
+        })
+
+    excerpt_block = "\n\n".join(
+        f"Source: {r.get('title') or r.get('url')}\n" + "\n".join(r.get("excerpts") or [])
+        for r in results[:6]
+    )
+    prompt = (
+        f'Using ONLY the search excerpts below, extract the value of "{metric}" for {city_name}. '
+        f"If the excerpts don't clearly establish it, set value to null -- never estimate from "
+        f"your own knowledge.\n\nSEARCH EXCERPTS:\n{excerpt_block}"
+    )
+    try:
+        synthesized = _call_gemini_json(prompt, _LIVE_METRIC_SCHEMA)
+    except (requests.HTTPError, KeyError, ValueError) as e:
+        return jsonify({"error": f"Gemini synthesis failed: {e}"}), 502
+
+    return jsonify({
+        "source": "parallel_live", "metric": metric, "city_name": city_name,
+        "value": synthesized.get("value"), "note": synthesized.get("note"),
+        "confidence": synthesized.get("confidence", "low"),
+        "citations": citations, "search_queries_used": queries,
+    })
 
 
 _FRANCHISE_CONTEXT_SCHEMA = {

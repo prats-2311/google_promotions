@@ -50,6 +50,10 @@ function GenreHistoricalHint({ genre }: { genre: string }) {
 const CAMPAIGN_TYPES = [
   { value: "film_promo_tour", label: "Film Promo Tour" },
   { value: "music_world_tour", label: "Music World Tour" },
+  { value: "series_promo_tour", label: "Series Promo Tour" },
+  { value: "book_tour", label: "Book Tour" },
+  { value: "comedy_tour", label: "Comedy Tour" },
+  { value: "game_launch_tour", label: "Game Launch Tour" },
 ];
 
 // Reusable across campaigns -- city_demographics is city-level, not tied to
@@ -71,6 +75,8 @@ interface StopEntry {
   city_id: string;
   stop_date: string;
   venue_url?: string;
+  // Per-stop metric override; null/undefined = inherit the campaign set.
+  stop_metrics?: string[] | null;
 }
 
 // The native <input type="date"> renders in whatever dd/mm/yyyy vs mm/dd/yyyy
@@ -246,6 +252,10 @@ export function NewCampaign() {
   const [talentRoster, setTalentRoster] = usePersistentState("new-campaign:roster", "");
   const [stops, setStops] = usePersistentState<StopEntry[]>("new-campaign:stops", []);
   const [selectedMetrics, setSelectedMetrics] = usePersistentState<string[]>("new-campaign:metrics", []);
+  // Campaigner-defined metrics beyond the curated set -- resolved later via
+  // live Parallel search on the city page. Stored as their display label.
+  const [customMetrics, setCustomMetrics] = usePersistentState<string[]>("new-campaign:custom-metrics", []);
+  const [newMetric, setNewMetric] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // What the assistant last suggested for each field -- lets applySuggestion
@@ -273,6 +283,31 @@ export function NewCampaign() {
 
   function toggleMetric(key: string) {
     setSelectedMetrics((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
+  }
+
+  function addCustomMetric() {
+    const label = newMetric.trim().replace(/\s+/g, " ");
+    if (!label || label.length > 60) return;
+    if (!customMetrics.includes(label)) {
+      setCustomMetrics((prev) => [...prev, label]);
+      setSelectedMetrics((prev) => (prev.includes(label) ? prev : [...prev, label]));
+    }
+    setNewMetric("");
+  }
+
+  function removeCustomMetric(label: string) {
+    setCustomMetrics((prev) => prev.filter((m) => m !== label));
+    setSelectedMetrics((prev) => prev.filter((m) => m !== label));
+    setStops((prev) => prev.map((st) => (st.stop_metrics ? { ...st, stop_metrics: st.stop_metrics.filter((m) => m !== label) } : st)));
+  }
+
+  const allMetricOptions = [
+    ...METRIC_OPTIONS,
+    ...customMetrics.map((m) => ({ key: m, label: m })),
+  ];
+
+  function setStopMetrics(cityId: string, metrics: string[] | null) {
+    setStops((prev) => prev.map((st) => (st.city_id === cityId ? { ...st, stop_metrics: metrics } : st)));
   }
 
   // Fills the form live as the assistant confirms each field, without ever
@@ -355,6 +390,7 @@ export function NewCampaign() {
             city_id: s.city_id,
             stop_date: s.stop_date,
             ...(s.venue_url?.trim() ? { venue_url: s.venue_url.trim() } : {}),
+            ...(s.stop_metrics?.length ? { stop_metrics: s.stop_metrics } : {}),
           })),
         selected_metrics: selectedMetrics,
       });
@@ -369,6 +405,7 @@ export function NewCampaign() {
         "new-campaign:roster",
         "new-campaign:stops",
         "new-campaign:metrics",
+        "new-campaign:custom-metrics",
         "new-campaign:last-suggested",
         "strategy-chat:messages",
         "strategy-chat:doc-text",
@@ -522,6 +559,61 @@ export function NewCampaign() {
                       onChange={(url) => setVenueUrl(city.city_id, url)}
                     />
                   )}
+                  {selected && (
+                    <div className="mt-2">
+                      {stop.stop_metrics == null ? (
+                        <button
+                          type="button"
+                          onClick={() => setStopMetrics(city.city_id, [...selectedMetrics])}
+                          className="font-sans text-[11px] text-ink-muted underline outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-gold/50"
+                        >
+                          Customize metrics for this stop
+                        </button>
+                      ) : (
+                        <div className="rounded-lg border border-line bg-paper-raised/60 p-2.5">
+                          <div className="mb-1.5 flex items-center justify-between">
+                            <p className="font-mono text-[9px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+                              Metrics for {city.city_name} only
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setStopMetrics(city.city_id, null)}
+                              className="font-sans text-[10.5px] text-ink-muted underline hover:text-ink"
+                            >
+                              Use campaign default
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {allMetricOptions.map((metric) => {
+                              const on = stop.stop_metrics?.includes(metric.key) ?? false;
+                              return (
+                                <button
+                                  key={metric.key}
+                                  type="button"
+                                  aria-pressed={on}
+                                  onClick={() =>
+                                    setStopMetrics(
+                                      city.city_id,
+                                      on
+                                        ? (stop.stop_metrics ?? []).filter((m) => m !== metric.key)
+                                        : [...(stop.stop_metrics ?? []), metric.key]
+                                    )
+                                  }
+                                  className={`rounded-full border px-2 py-1 font-sans text-[10.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40 ${
+                                    on
+                                      ? "border-gold/70 bg-gold/15 text-gold"
+                                      : "border-line text-ink-muted hover:text-ink"
+                                  }`}
+                                >
+                                  {metric.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -535,24 +627,61 @@ export function NewCampaign() {
             hint="Fetched for each city stop — curated data when available, live web search otherwise."
           />
           <div className="flex flex-wrap gap-2">
-            {METRIC_OPTIONS.map((metric) => {
+            {allMetricOptions.map((metric) => {
               const selected = selectedMetrics.includes(metric.key);
+              const isCustom = customMetrics.includes(metric.key);
               return (
-                <button
-                  key={metric.key}
-                  type="button"
-                  onClick={() => toggleMetric(metric.key)}
-                  aria-pressed={selected}
-                  className={`rounded-full border px-3 py-1.5 font-sans text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40 ${
-                    selected
-                      ? "border-gold/70 bg-gold/15 text-gold"
-                      : "border-line bg-paper-raised text-ink-muted hover:text-ink"
-                  }`}
-                >
-                  {metric.label}
-                </button>
+                <span key={metric.key} className="inline-flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => toggleMetric(metric.key)}
+                    aria-pressed={selected}
+                    className={`rounded-full border px-3 py-1.5 font-sans text-[12px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/40 ${
+                      selected
+                        ? "border-gold/70 bg-gold/15 text-gold"
+                        : "border-line bg-paper-raised text-ink-muted hover:text-ink"
+                    } ${isCustom ? "rounded-r-none border-r-0" : ""}`}
+                  >
+                    {metric.label}
+                  </button>
+                  {isCustom && (
+                    <button
+                      type="button"
+                      onClick={() => removeCustomMetric(metric.key)}
+                      aria-label={`Delete custom metric ${metric.label}`}
+                      className="rounded-r-full border border-l-0 border-line bg-paper-raised px-2 py-1.5 font-sans text-[12px] text-ink-muted outline-none transition-colors hover:text-red-300 focus-visible:ring-2 focus-visible:ring-ink/40"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
               );
             })}
+          </div>
+          {/* Campaigner-defined metrics: anything ("cinema screens", "EV
+              charging stations") -- resolved on the city page via live
+              Parallel search, never estimated. */}
+          <div className="mt-3 flex max-w-sm items-center gap-2">
+            <input
+              value={newMetric}
+              onChange={(e) => setNewMetric(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCustomMetric();
+                }
+              }}
+              placeholder="Add your own metric, e.g. cinema screens"
+              className="min-w-0 flex-1 rounded-lg border border-ink/15 bg-paper-raised px-2.5 py-1.5 font-sans text-[12px] text-ink outline-none transition-colors placeholder:text-ink-muted/60 focus:border-gold focus:ring-2 focus:ring-gold/25"
+            />
+            <button
+              type="button"
+              onClick={addCustomMetric}
+              disabled={!newMetric.trim()}
+              className="shrink-0 rounded-lg border border-ink/15 px-3 py-1.5 font-sans text-[12px] font-medium text-ink outline-none transition-colors hover:border-gold hover:text-gold focus-visible:ring-2 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              + Add
+            </button>
           </div>
         </div>
 

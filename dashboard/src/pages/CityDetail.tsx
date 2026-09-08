@@ -39,8 +39,8 @@ import {
 } from "lucide-react";
 import { StatMeter } from "../components/ui/StatMeter";
 import { StatTile } from "../components/ui/StatTile";
-import { getCityDetail } from "../lib/api";
-import type { CityDetail as CityDetailData, TalentBrief, TraceStep } from "../lib/types";
+import { getCityDetail, getLiveMetric } from "../lib/api";
+import type { CityDetail as CityDetailData, LiveMetricResult, TalentBrief, TraceStep } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
 import { ThinkingTrace, type TraceStepItem } from "../components/ui/ThinkingTrace";
 import { Tabs } from "../components/ui/Tabs";
@@ -876,8 +876,20 @@ export function CityDetail() {
   );
 }
 
+// The curated metric keys the demographic snapshot can natively render --
+// anything else selected for this stop/campaign is a campaigner-defined
+// custom metric, resolved on demand via live search below.
+const KNOWN_METRIC_KEYS = new Set([
+  "literacy_rate", "median_household_income_usd", "population", "median_age",
+  "internet_penetration_rate", "dominant_social_platforms", "top_interest_categories",
+  "notable_public_holidays",
+]);
+
 function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: string }) {
   const { cultureNotes, demographicSnapshot, campaign, stop, brief } = data;
+  // Per-stop override beats the campaign-level selection when present.
+  const effectiveMetrics = stop.stop_metrics?.length ? stop.stop_metrics : campaign.selected_metrics;
+  const customMetrics = (effectiveMetrics ?? []).filter((m) => !KNOWN_METRIC_KEYS.has(m));
   let venueNotes: VenueNotes | null = null;
   if (brief?.venue_notes_json) {
     try {
@@ -921,9 +933,14 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
           {cultureNotes.humor_boundaries}
         </p>
       </div>
-      {demographicSnapshot && (
+      {(demographicSnapshot || customMetrics.length > 0) && (
         <CardErrorBoundary>
-          <KeyMetricsCard snapshot={demographicSnapshot} accent={accent} />
+          <KeyMetricsCard
+            snapshot={demographicSnapshot}
+            accent={accent}
+            cityName={stop.city_name}
+            customMetrics={customMetrics}
+          />
         </CardErrorBoundary>
       )}
       {venueNotes && (
@@ -990,8 +1007,74 @@ function IntelligenceTab({ data, accent }: { data: CityDetailData; accent: strin
   );
 }
 
-function KeyMetricsCard({ snapshot, accent }: { snapshot: NonNullable<CityDetailData["demographicSnapshot"]>; accent: string }) {
-  const numberStats: { label: string; value: number }[] = [
+function CustomMetricRow({ metric, cityName, accent }: { metric: string; cityName: string; accent: string }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<LiveMetricResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFetch() {
+    setError(null);
+    setLoading(true);
+    try {
+      setResult(await getLiveMetric(cityName, metric));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg bg-paper-raised px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-sans text-[12.5px] font-medium text-ink">{metric}</p>
+        {!result && (
+          <button
+            type="button"
+            onClick={handleFetch}
+            disabled={loading}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-ink/15 px-2.5 py-1 font-sans text-[11px] font-medium text-ink outline-none transition-colors hover:border-gold hover:text-gold focus-visible:ring-2 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={11} className="animate-spin" aria-hidden /> : <Search size={11} aria-hidden />}
+            {loading ? "Searching…" : "Fetch live"}
+          </button>
+        )}
+        {result && (
+          <span className="font-sans text-[13px] font-semibold tabular-nums" style={{ color: accent }}>
+            {result.value ?? "not established by sources"}
+          </span>
+        )}
+      </div>
+      {error && <p className="mt-1 font-sans text-[11px] text-red-300">Couldn't fetch: {error}</p>}
+      {result && (
+        <div className="mt-1">
+          {result.note && <p className="font-sans text-[11.5px] leading-relaxed text-ink-muted">{result.note}</p>}
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-sans text-[10.5px] text-ink-muted">
+            <span className="font-mono uppercase tracking-[0.08em]">live · {result.confidence} confidence</span>
+            {result.citations.map((c, i) => (
+              <a key={i} href={c.url} target="_blank" rel="noreferrer" className="underline hover:text-ink">
+                {c.title || c.url}
+              </a>
+            ))}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KeyMetricsCard({
+  snapshot,
+  accent,
+  cityName,
+  customMetrics,
+}: {
+  snapshot: CityDetailData["demographicSnapshot"];
+  accent: string;
+  cityName: string;
+  customMetrics: string[];
+}) {
+  const numberStats: { label: string; value: number }[] = snapshot == null ? [] : [
     snapshot.population != null && { label: "Population", value: snapshot.population },
     snapshot.median_household_income_usd != null && {
       label: "Median income",
@@ -1000,7 +1083,7 @@ function KeyMetricsCard({ snapshot, accent }: { snapshot: NonNullable<CityDetail
     snapshot.median_age != null && { label: "Median age", value: snapshot.median_age },
   ].filter(Boolean) as { label: string; value: number }[];
 
-  const listStats: { label: string; items: string[] }[] = [
+  const listStats: { label: string; items: string[] }[] = snapshot == null ? [] : [
     snapshot.top_interest_categories?.length && { label: "Top interests", items: snapshot.top_interest_categories },
     snapshot.dominant_social_platforms?.length && {
       label: "Social platforms",
@@ -1013,14 +1096,14 @@ function KeyMetricsCard({ snapshot, accent }: { snapshot: NonNullable<CityDetail
     <div className="rounded-2xl bg-paper p-6 lg:col-span-2">
       <div className="flex items-center justify-between">
         <SectionLabel icon={BarChart3} accent={accent} label="Key Metrics" />
-        {snapshot.source === "parallel_live" && (
+        {snapshot?.source === "parallel_live" && (
           <span className="font-sans text-[10px] uppercase tracking-[0.08em] text-ink-muted">
             live search · confidence: {snapshot.confidence ?? "n/a"}
           </span>
         )}
       </div>
 
-      {(snapshot.literacy_rate != null || snapshot.internet_penetration_rate != null) && (
+      {snapshot != null && (snapshot.literacy_rate != null || snapshot.internet_penetration_rate != null) && (
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {snapshot.literacy_rate != null && (
             <div>
@@ -1063,6 +1146,19 @@ function KeyMetricsCard({ snapshot, accent }: { snapshot: NonNullable<CityDetail
           </div>
         </div>
       ))}
+
+      {customMetrics.length > 0 && (
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="mb-2 font-mono text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+            Custom metrics for this stop · resolved by live search
+          </p>
+          <div className="space-y-2">
+            {customMetrics.map((m) => (
+              <CustomMetricRow key={m} metric={m} cityName={cityName} accent={accent} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

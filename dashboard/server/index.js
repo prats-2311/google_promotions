@@ -220,7 +220,10 @@ async function cachedCallTool(path) {
 }
 
 function artistTypeFor(campaignType) {
-  return campaignType === "music_world_tour" ? "musician" : "film_cast";
+  // Seeded fan_signals rows cover musician/film_cast; newer campaign types
+  // map to the closest live-performance profile, and a miss degrades to the
+  // honest no-signal path everywhere this is used.
+  return campaignType === "music_world_tour" || campaignType === "comedy_tour" ? "musician" : "film_cast";
 }
 
 // Mirrors orchestration_driver/run_campaign.py's _style_notes_from_collected
@@ -393,6 +396,20 @@ app.post("/api/campaign-edit-chat", async (req, res) => {
 // Server tier of the two-tier chat history (localStorage is the instant
 // tier): deliberately NOT cachedCallTool -- a session read must reflect the
 // latest save, and the writes are the user's own conversation.
+app.post("/api/live-metric-search", async (req, res) => {
+  try {
+    const result = await callTool("/live_metric_search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(60000),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.get("/api/chat-session", async (req, res) => {
   try {
     const key = req.query.session_key;

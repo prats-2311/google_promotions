@@ -14,6 +14,9 @@ export interface CampaignStop {
   stop_date: string;
   sequence_order: number;
   event_format: string | null;
+  // Per-stop metric override -- when non-empty it beats the campaign-level
+  // selected_metrics for this city (brief generation and the city page).
+  stop_metrics?: string[] | null;
 }
 
 export interface CityOverview extends CampaignStop {
@@ -245,6 +248,20 @@ export interface GenreRecommendationsResponse {
   recommendations: GenreRecommendation[];
 }
 
+// A campaigner-named custom metric resolved via live Parallel search +
+// Gemini synthesis -- value is null (never estimated) when the sources
+// don't establish one.
+export interface LiveMetricResult {
+  source: "parallel_live";
+  metric: string;
+  city_name: string;
+  value: string | null;
+  note: string | null;
+  confidence: "high" | "medium" | "low";
+  citations: MonitorCitation[];
+  search_queries_used: string[];
+}
+
 export interface PronunciationAudio {
   phrase: string;
   audio_url: string | null;
@@ -285,6 +302,7 @@ export interface TraceStep {
 export interface NewCampaignStopInput {
   city_id: string;
   stop_date: string;
+  stop_metrics?: string[] | null;
   event_format?: string | null;
   venue_url?: string | null;
 }

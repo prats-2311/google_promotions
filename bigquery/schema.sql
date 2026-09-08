@@ -226,3 +226,11 @@ CREATE TABLE IF NOT EXISTS `tour_intelligence.chat_sessions` (
   context_json STRING,
   updated_at TIMESTAMP
 );
+
+-- Per-stop metric overrides (2026-09-09): a campaigner can want different
+-- key metrics for different cities in the SAME campaign -- stop_metrics,
+-- when non-empty, overrides campaigns.selected_metrics for that stop
+-- (brief generation and the city page both prefer it). Same insert-only
+-- latest-wins semantics as the rest of campaign_stops.
+ALTER TABLE `tour_intelligence.campaign_stops`
+  ADD COLUMN IF NOT EXISTS stop_metrics ARRAY<STRING>;

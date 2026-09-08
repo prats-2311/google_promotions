@@ -1,4 +1,4 @@
-import type { Campaign, CampaignOverview, CityDetail, ChatMessage, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist, FranchiseContext, CampaignEditChatResponse, UpdatedCampaign } from "./types";
+import type { Campaign, CampaignOverview, CityDetail, ChatMessage, LiveMetricResult, NewCampaignInput, StrategyChatResponse, GenreRecommendationsResponse, MonitorEvent, StopOutcome, City, BulkAddCitiesResponse, VenueDiscoveryResponse, LocalCrewVendorsResponse, VisaRequirements, SeasonalWeatherRisk, StopSafetyChecklist, FranchiseContext, CampaignEditChatResponse, UpdatedCampaign } from "./types";
 
 // Defense in depth alongside the BFF's own callTool timeout (server/index.js)
 // -- a request that somehow hangs past this still rejects instead of leaving
@@ -13,6 +13,19 @@ async function getJson<T>(path: string): Promise<T> {
 
 export function getCampaignOverview(campaignId: string) {
   return getJson<CampaignOverview>(`/api/campaigns/${campaignId}/overview`);
+}
+
+// Resolve a campaigner-named custom metric for a city via live search --
+// slow path (Parallel + Gemini), fetched on demand from the city page.
+export async function getLiveMetric(cityName: string, metric: string) {
+  const res = await fetch("/api/live-metric-search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ city_name: cityName, metric }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) throw new Error(`live metric failed: ${res.status}`);
+  return res.json() as Promise<LiveMetricResult>;
 }
 
 // Server tier of the two-tier assistant-chat history (localStorage is the
