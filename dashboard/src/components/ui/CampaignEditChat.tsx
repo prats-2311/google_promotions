@@ -3,7 +3,7 @@ import { Check, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { addCampaignStops, chatAboutCampaignEdit, getChatSession, removeCampaignStop, saveChatSession, updateCampaign } from "../../lib/api";
 import type { ChatMessage, ProposedCampaignChanges } from "../../lib/types";
 import { CueCard } from "./CueCard";
-import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
+import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, MicButton, SuggestionChips, TypingIndicator } from "./ChatBits";
 import { usePersistentState, clearPersistentState } from "../../lib/usePersistentState";
 
 // Real writes to a live, already-created campaign -- unlike NewCampaign's
@@ -262,6 +262,7 @@ export function CampaignEditChat({
       )}
 
       <div className="flex items-end gap-2">
+        <MicButton onTranscript={(t) => setInput((prev) => (prev ? `${prev} ${t}` : t))} />
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}

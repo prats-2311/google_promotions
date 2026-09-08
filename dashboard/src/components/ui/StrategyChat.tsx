@@ -3,13 +3,17 @@ import { Loader2, Paperclip, RotateCcw, Search, Send, Sparkles, X } from "lucide
 import { chatAboutStrategy, getChatSession, saveChatSession } from "../../lib/api";
 import type { ChatMessage, FranchiseContext, SuggestedCampaign } from "../../lib/types";
 import { CueCard } from "./CueCard";
-import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, SuggestionChips, TypingIndicator } from "./ChatBits";
+import { ChatBubble, CHAT_INPUT_CLASS, CHAT_SEND_CLASS, MicButton, SuggestionChips, TypingIndicator } from "./ChatBits";
 import { usePersistentState, clearPersistentState } from "../../lib/usePersistentState";
 
-// .txt/.md only, read client-side via FileReader -- no multer/multipart on
-// the server (none installed today), no PDF parsing. A clean later add, not
-// a blocker for a first version of this feature.
-const ACCEPTED_FILE_TYPES = ".txt,.md";
+// Plain-text formats only, read client-side via FileReader -- no
+// multer/multipart on the server, and .pdf/.docx need a real parsing lib
+// (pdf.js / mammoth), a clean later add. csv/tsv cover the spreadsheet of
+// stops planners actually have; json covers briefs from other tools.
+const ACCEPTED_FILE_TYPES = ".txt,.md,.csv,.tsv,.json";
+// Cap what we read into the prompt -- a huge file would silently truncate
+// in the model's context and mislead; better an honest refusal.
+const MAX_STRATEGY_FILE_BYTES = 200 * 1024;
 
 const STRATEGY_SUGGESTIONS = [
   "Synth-pop world tour, Tokyo and London this fall",
@@ -83,6 +87,12 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > MAX_STRATEGY_FILE_BYTES) {
+      setError(`"${file.name}" is over 200KB — attach a trimmed version so the assistant can read all of it.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setError(null);
     const reader = new FileReader();
     reader.onload = () => {
       setStrategyText(String(reader.result || ""));
@@ -221,12 +231,13 @@ export function StrategyChat({ onSuggestion }: { onSuggestion: (suggested: Sugge
       <div className="flex items-end gap-2">
         <label
           className="flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-ink/15 bg-paper-raised p-2.5 text-ink-muted transition-colors hover:border-ink/40 hover:text-ink"
-          title="Attach a .txt or .md strategy document"
+          title="Attach a strategy document (.txt, .md, .csv, .tsv, .json)"
         >
           <Paperclip size={14} aria-hidden />
-          <span className="sr-only">Attach a .txt or .md strategy document</span>
+          <span className="sr-only">Attach a strategy document (.txt, .md, .csv, .tsv, or .json)</span>
           <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} onChange={handleFile} className="hidden" />
         </label>
+        <MicButton onTranscript={(t) => setInput((prev) => (prev ? `${prev} ${t}` : t))} />
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
