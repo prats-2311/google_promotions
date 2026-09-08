@@ -6,6 +6,7 @@ import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOUR_DATA_API = process.env.TOUR_DATA_API_URL || "https://tour-data-api-602700957663.us-central1.run.app";
+const DELIGHT_RENDERER = process.env.DELIGHT_RENDERER_URL || "https://delight-card-renderer-602700957663.us-central1.run.app";
 const PORT = process.env.PORT || 8787;
 const RUN_JOBS_API =
   "https://run.googleapis.com/v2/projects/liifecalling-academy/locations/us-central1/jobs/tour-campaign-orchestrator:run";
@@ -40,6 +41,28 @@ async function getIdentityToken() {
   }
   cachedAt = now;
   return cachedToken;
+}
+
+// The delight-card renderer is a SECOND Cloud Run service, so it needs its
+// own audience-bound identity token -- the tour_data_api token above would
+// be rejected there on audience mismatch (same one-token-per-audience rule
+// orchestration_driver/run_campaign.py documents for its render call).
+let cachedRendererToken = null;
+let cachedRendererAt = 0;
+
+async function getRendererToken() {
+  const now = Date.now();
+  if (cachedRendererToken && now - cachedRendererAt < TOKEN_TTL_MS) return cachedRendererToken;
+  try {
+    const url = `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${encodeURIComponent(DELIGHT_RENDERER)}`;
+    const res = await fetch(url, { headers: { "Metadata-Flavor": "Google" }, signal: AbortSignal.timeout(1000) });
+    if (!res.ok) throw new Error(`metadata server returned ${res.status}`);
+    cachedRendererToken = (await res.text()).trim();
+  } catch {
+    cachedRendererToken = execSync("gcloud auth print-identity-token").toString().trim();
+  }
+  cachedRendererAt = now;
+  return cachedRendererToken;
 }
 
 // The Cloud Run Admin API (run.googleapis.com) is a Google API, not a
@@ -363,6 +386,97 @@ app.get("/api/campaigns/:campaignId/overview", async (req, res) => {
     );
 
     res.json({ campaign, cities, campaignInsights });
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
+// The executive tour book: the whole-campaign document a planner hands
+// their boss (itinerary, market data incl. population, venue logistics,
+// activation plan per stop, cross-city insights) -- assembled here from the
+// same grounded rows every screen already reads, rendered and stored by the
+// delight-card service's /tour_book path. Nothing in it is generated at
+// render time; this route only gathers and lays out real data.
+app.post("/api/tour-book", async (req, res) => {
+  try {
+    const campaignId = req.body?.campaign_id;
+    if (!campaignId) return res.status(400).json({ error: "missing campaign_id" });
+
+    const safeParse = (s) => {
+      if (!s) return null;
+      try { return JSON.parse(s); } catch { return null; }
+    };
+
+    const [campaign, stopsResp, briefsResp, insightsResp] = await Promise.all([
+      cachedCallTool(`/campaigns?campaign_id=${encodeURIComponent(campaignId)}`),
+      cachedCallTool(`/campaign_stops?campaign_id=${encodeURIComponent(campaignId)}`),
+      cachedCallTool(`/city_briefs?campaign_id=${encodeURIComponent(campaignId)}`),
+      cachedCallTool(`/campaign_insights?campaign_id=${encodeURIComponent(campaignId)}`).catch(() => null),
+    ]);
+    const briefByCity = Object.fromEntries(briefsResp.briefs.map((b) => [b.city_id, b]));
+
+    const cities = await Promise.all(
+      stopsResp.stops.map(async (stop) => {
+        const brief = briefByCity[stop.city_id] ?? null;
+        const [signal, delight] = await Promise.all([
+          cachedCallTool(
+            `/fan_signals?city_id=${stop.city_id}&genre=${encodeURIComponent(campaign.genre)}&artist_type=${artistTypeFor(campaign.campaign_type)}`
+          ).catch(() => null),
+          cachedCallTool(`/local_delight?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
+        ]);
+
+        const rawBrief = safeParse(brief?.talent_brief_json);
+        const talentBrief = rawBrief
+          ? {
+              lean_into: rawBrief.topics_to_lean_into ?? rawBrief.lean_into ?? [],
+              avoid: rawBrief.topics_to_avoid ?? rawBrief.avoid ?? [],
+              fan_questions: (rawBrief.high_probability_fan_questions ?? rawBrief.fan_questions ?? []).map((q) =>
+                typeof q === "string" ? q : q.question
+              ),
+            }
+          : null;
+
+        return {
+          ...stop,
+          enthusiasm_score: brief?.enthusiasm_score ?? signal?.enthusiasm_score ?? null,
+          tier: signal?.city_importance_tier ?? null,
+          fan_behavior_style: signal?.fan_behavior_style ?? null,
+          grounding_check_passed: brief?.grounding_check_passed ?? false,
+          delight_card_url: brief?.delight_card_url ?? null,
+          demographics: safeParse(brief?.demographic_snapshot_json),
+          venue: safeParse(brief?.venue_notes_json),
+          talent_brief: talentBrief,
+          delight: delight
+            ? {
+                local_phrases: delight.local_phrases ?? [],
+                crowd_moment_suggestions: delight.crowd_moment_suggestions ?? [],
+                music_or_remix_ideas: delight.music_or_remix_ideas ?? [],
+              }
+            : null,
+        };
+      })
+    );
+
+    const payload = {
+      campaign,
+      generated_at: new Date().toISOString().slice(0, 10),
+      insights: safeParse(insightsResp?.insights_json) ?? [],
+      cities,
+    };
+
+    const renderRes = await fetch(`${DELIGHT_RENDERER}/tour_book`, {
+      method: "POST",
+      signal: AbortSignal.timeout(60000),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await getRendererToken()}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!renderRes.ok) {
+      throw new Error(`tour book render failed (${renderRes.status}): ${await renderRes.text()}`);
+    }
+    res.json(await renderRes.json());
   } catch (err) {
     res.status(502).json({ error: String(err) });
   }

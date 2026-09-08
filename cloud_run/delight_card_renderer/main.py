@@ -58,23 +58,91 @@ def _render_html(brief: dict) -> str:
     )
 
 
-def _upload_html(html: str, brief_id: str) -> str:
+def _upload_html(html: str, object_path: str) -> str:
     bucket_name = os.environ["DELIGHT_CARD_BUCKET"]
     client = storage.Client()
     bucket = client.bucket(bucket_name)
-    blob = bucket.blob(f"delight-cards/{brief_id}.html")
+    blob = bucket.blob(object_path)
     blob.upload_from_string(html, content_type="text/html")
     return blob.public_url
+
+
+def _fmt_compact(n) -> str:
+    """12500000 -> '12.5M' -- chart/table labels in the tour book."""
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return "—"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return f"{n:.0f}"
+
+
+def _render_tour_book(payload: dict) -> str:
+    """The campaign-level executive tour book: the whole-tour document a
+    planner hands their boss -- itinerary, per-city market data, venue
+    logistics, activation plan -- assembled from the same grounded rows the
+    per-city cards use. The BFF gathers the data; this only lays it out."""
+    template = _ENV.get_template("tour_book.html")
+    cities = payload.get("cities", [])
+
+    scored = [c for c in cities if c.get("enthusiasm_score") is not None]
+    avg_score = round(sum(c["enthusiasm_score"] for c in scored) / len(scored)) if scored else 0
+    populations = [
+        (c.get("demographics") or {}).get("population")
+        for c in cities
+        if (c.get("demographics") or {}).get("population")
+    ]
+    max_pop = max(populations) if populations else 0
+
+    enriched = []
+    for c in cities:
+        demo = c.get("demographics") or {}
+        pop = demo.get("population")
+        enriched.append({
+            **c,
+            "accent": _ACCENT_BY_CITY.get(c.get("city_id"), _DEFAULT_ACCENT),
+            "score": int(c.get("enthusiasm_score") or 0),
+            "pop_label": _fmt_compact(pop) if pop else None,
+            "pop_pct": round(pop / max_pop * 100) if pop and max_pop else 0,
+            "income_label": _fmt_compact(demo.get("median_household_income_usd"))
+            if demo.get("median_household_income_usd") else None,
+        })
+
+    dates = sorted(c["stop_date"] for c in cities if c.get("stop_date"))
+    campaign = payload.get("campaign", {})
+    return template.render(
+        campaign=campaign,
+        campaign_type_label=str(campaign.get("campaign_type", "")).replace("_", " "),
+        cities=enriched,
+        insights=payload.get("insights", []),
+        generated_at=payload.get("generated_at", ""),
+        avg_score=avg_score,
+        date_span=f"{dates[0]} → {dates[-1]}" if dates else "",
+        tier1_count=sum(1 for c in cities if "1" in str(c.get("tier") or "")),
+        verified_count=sum(1 for c in cities if c.get("grounding_check_passed")),
+    )
 
 
 @functions_framework.http
 def render_delight_card(request):
     payload = request.get_json(silent=True)
     if not payload:
-        return jsonify({"error": "expected a JSON body with the finalized brief"}), 400
+        return jsonify({"error": "expected a JSON body"}), 400
+
+    # Same service, two artifacts: the per-city delight card (default) and
+    # the campaign-level tour book (path-routed) -- both are "render real
+    # brief data to a stored HTML artifact", so they share the upload path,
+    # accents, and deploy story.
+    if str(getattr(request, "path", "") or "").rstrip("/").endswith("/tour_book"):
+        campaign_id = (payload.get("campaign") or {}).get("campaign_id") or str(uuid.uuid4())
+        html = _render_tour_book(payload)
+        url = _upload_html(html, f"tour-books/{campaign_id}.html")
+        return jsonify({"campaign_id": campaign_id, "tour_book_url": url})
 
     brief_id = payload.get("brief_id") or str(uuid.uuid4())
     html = _render_html(payload)
-    url = _upload_html(html, brief_id)
-
+    url = _upload_html(html, f"delight-cards/{brief_id}.html")
     return jsonify({"brief_id": brief_id, "delight_card_url": url})

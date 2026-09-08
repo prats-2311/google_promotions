@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{ campaign.title }} — Executive Tour Book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  /* Premiere Noir, same vocabulary as the delight card and the dashboard
+     (hand-synced -- see dashboard/CLAUDE.md). This is the whole-campaign
+     executive document: cover -> itinerary -> metrics -> insights -> one
+     chapter per city. Print flips to light paper (Cmd+P = the boss PDF). */
+  :root {
+    --canvas: #1c1b18;
+    --card: #282722;
+    --well: #32312a;
+    --ink: #f0eee6;
+    --line: rgba(240, 238, 230, 0.09);
+    --muted: rgba(240, 238, 230, 0.58);
+    --gold: #ffcc00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(900px 420px at 85% -10%, rgba(255, 204, 0, 0.07), transparent 60%),
+      radial-gradient(760px 440px at -8% 108%, rgba(124, 77, 255, 0.06), transparent 55%),
+      var(--canvas);
+    font-family: "Inter", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  .book { width: 100%; max-width: 860px; }
+  .page {
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 18px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 24px 48px -20px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .band {
+    height: 10px;
+    background-color: var(--gold);
+    background-image: radial-gradient(circle, var(--card) 2.75px, transparent 3.25px);
+    background-size: 14px 100%;
+    background-repeat: repeat-x;
+    background-position: 7px center;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .pad { padding: 32px 40px 36px; }
+  .mono {
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .serif { font-family: "Fraunces", ui-serif, Georgia, serif; font-weight: 600; letter-spacing: -0.015em; }
+  h1.serif { font-size: 46px; line-height: 1.02; margin: 8px 0 0; }
+  h2.serif { font-size: 30px; line-height: 1.05; margin: 6px 0 0; }
+  .sheen { color: var(--ink); }
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .sheen {
+      background-image: linear-gradient(180deg, #ffffff 0%, #edebe4 55%, #b6b3a8 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+  }
+  .subtle { color: var(--muted); font-size: 13px; }
+
+  /* KPI tiles (cover + chapter headers) */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 22px; }
+  .kpi {
+    background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px 14px;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .kpi .mono { font-size: 9px; letter-spacing: 0.12em; }
+  .kpi__value {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 21px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin: 6px 0 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi__hint { font-size: 10.5px; color: var(--muted); }
+
+  .roster { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--ink);
+    background: var(--well);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .section-label {
+    display: flex; align-items: center; gap: 10px;
+    margin: 26px 0 12px;
+  }
+  .section-label .mono { color: var(--gold); font-weight: 700; }
+  .section-label .rule { height: 1px; flex: 1; background: var(--line); }
+
+  /* Itinerary table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; font-family: "JetBrains Mono", monospace; font-size: 9.5px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+    font-weight: 500; padding: 6px 10px 8px; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
+  .citydot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  a { color: inherit; }
+
+  /* CSS bar charts (print-safe) */
+  .chart { margin-top: 6px; }
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 52px; align-items: center; gap: 12px; padding: 5px 0; }
+  .bar-row .name { font-size: 12.5px; font-weight: 600; }
+  .bar-track { height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .bar-fill { height: 100%; border-radius: 999px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .bar-val { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Insights */
+  .insight { background: var(--well); border-radius: 10px; padding: 12px 16px; margin: 8px 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .insight__title { font-size: 13.5px; font-weight: 600; margin: 0 0 3px; }
+  .insight__body { font-size: 12.5px; color: var(--muted); margin: 0; line-height: 1.5; }
+  .sev { font-family: "JetBrains Mono", monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .sev--risk { color: #f87171; }
+  .sev--advisory { color: #fbbf24; }
+  .sev--info { color: var(--muted); }
+
+  /* City chapters */
+  .chapter-band { height: 10px; background-size: 14px 100%; background-repeat: repeat-x; background-position: 7px center; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .chapter-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; }
+  @media (max-width: 620px) { .cols2 { grid-template-columns: 1fr; } }
+  ul.plain { margin: 0; padding: 0; list-style: none; }
+  ul.plain li { padding: 4px 0 4px 22px; position: relative; font-size: 13px; line-height: 1.45; }
+  ul.plain li::before { content: "✓"; position: absolute; left: 0; top: 4px; font-size: 12px; font-weight: 700; color: #34d399; }
+  ul.avoid li::before { content: "✕"; color: #f87171; }
+  ul.dots li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; top: 11px; background: var(--gold); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .fact { background: var(--well); border-radius: 10px; padding: 10px 12px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .fact .mono { font-size: 8.5px; }
+  .fact__v { font-size: 15px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .phrase-card {
+    background: var(--well); border-radius: 10px; padding: 10px 14px; margin: 7px 0;
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
+  .phrase-card__phrase { font-size: 15px; font-weight: 600; margin: 0; }
+  .phrase-card__sub { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .phrase-card__phonetic { font-family: "JetBrains Mono", monospace; font-size: 10px; }
+  .kv { font-size: 12.5px; line-height: 1.55; color: var(--ink); margin: 3px 0; }
+  .kv b { font-weight: 600; }
+  .kv .subtle { font-size: 12.5px; }
+  .footer { padding: 14px 40px 22px; font-family: "JetBrains Mono", monospace; font-size: 9.5px; letter-spacing: 0.04em; color: var(--muted); }
+  .footer .ok { color: #6ee7b7; }
+
+  @media print {
+    :root {
+      --canvas: #ffffff; --card: #ffffff; --well: #f4f2ec;
+      --ink: #161511; --line: rgba(20, 20, 17, 0.14); --muted: rgba(20, 20, 17, 0.6);
+    }
+    body { background: #ffffff; padding: 0; }
+    .book { max-width: none; }
+    .page { box-shadow: none; border-radius: 0; border-color: rgba(20, 20, 17, 0.14); margin-bottom: 0; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    .band, .chapter-band { background-image: radial-gradient(circle, #ffffff 2.75px, transparent 3.25px) !important; }
+    .sheen { background-image: none; -webkit-background-clip: initial; background-clip: initial; color: var(--ink); }
+    ul.plain li::before { color: #0c7a4d; }
+    ul.avoid li::before { color: #c22f2f; }
+    .sev--risk { color: #c22f2f; } .sev--advisory { color: #a16207; }
+    .footer .ok { color: #0c7a4d; }
+    .kpi { border-color: rgba(20,20,17,0.14); background: #f8f7f3; }
+  }
+</style>
+</head>
+<body>
+<div class="book">
+
+  <!-- ============ COVER ============ -->
+  <div class="page">
+    <div class="band"></div>
+    <div class="pad">
+      <p class="mono">{{ campaign_type_label }} · {{ campaign.genre }} · Executive Tour Book</p>
+      <h1 class="serif sheen">{{ campaign.title }}</h1>
+      <p class="subtle" style="margin-top: 10px;">{{ date_span }} · {{ cities|length }} city stops</p>
+      {% if campaign.talent_roster %}
+      <div class="roster">
+        {% for t in campaign.talent_roster %}<span class="chip">{{ t }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="kpis">
+        <div class="kpi"><p class="mono">City Stops</p><p class="kpi__value">{{ cities|length }}</p><p class="kpi__hint">{{ date_span }}</p></div>
+        <div class="kpi"><p class="mono">Avg Enthusiasm</p><p class="kpi__value">{{ avg_score }}</p><p class="kpi__hint">strategic score / 100</p></div>
+        <div class="kpi"><p class="mono">Tier-1 Markets</p><p class="kpi__value">{{ tier1_count }}/{{ cities|length }}</p><p class="kpi__hint">must-win stops</p></div>
+        <div class="kpi"><p class="mono">Grounding Verified</p><p class="kpi__value">{{ verified_count }}/{{ cities|length }}</p><p class="kpi__hint">fact-checked vs. live sources</p></div>
+      </div>
+
+      <div class="section-label"><span class="mono">Itinerary</span><span class="rule"></span></div>
+      <table>
+        <thead><tr><th>#</th><th>City</th><th>Date</th><th>Format</th><th>Venue</th><th style="text-align:right">Enthusiasm</th></tr></thead>
+        <tbody>
+          {% for c in cities %}
+          <tr>
+            <td class="num">{{ c.sequence_order or loop.index }}</td>
+            <td><span class="citydot" style="background: {{ c.accent }};"></span><b>{{ c.city_name }}</b>{% if c.tier %} <span class="subtle">· {{ c.tier }}</span>{% endif %}</td>
+            <td class="num">{{ c.stop_date }}</td>
+            <td>{{ c.event_format or "—" }}</td>
+            <td>{% if c.venue_url %}<a href="{{ c.venue_url }}">{{ c.venue_url|replace("https://","")|replace("http://","")|truncate(34) }}</a>{% else %}—{% endif %}</td>
+            <td class="num" style="text-align:right; font-weight: 700;">{{ c.score }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="section-label"><span class="mono">Fan Enthusiasm by Market</span><span class="rule"></span></div>
+      <div class="chart">
+        {% for c in cities %}
+        <div class="bar-row">
+          <span class="name">{{ c.city_name }}</span>
+          <span class="bar-track"><span class="bar-fill" style="width: {{ c.score }}%; background: linear-gradient(90deg, color-mix(in srgb, {{ c.accent }} 55%, white), {{ c.accent }});"></span></span>
+          <span class="bar-val">{{ c.score }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if cities | selectattr("pop_label") | list %}
+      <div class="section-label"><span class="mono">Market Population</span><span class="rule"></span></div>
+      <div class="chart">
+        {% for c in cities %}{% if c.pop_label %}
+        <div class="bar-row">
+          <span class="name">{{ c.city_name }}</span>
+          <span class="bar-track"><span class="bar-fill" style="width: {{ c.pop_pct }}%; background: {{ c.accent }}; opacity: 0.75;"></span></span>
+          <span class="bar-val">{{ c.pop_label }}</span>
+        </div>
+        {% endif %}{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if insights %}
+      <div class="section-label"><span class="mono">Cross-City Insights</span><span class="rule"></span></div>
+      {% for ins in insights %}
+      <div class="insight">
+        <p class="sev sev--{{ ins.severity }}">{{ ins.severity }}{% if ins.affected_cities %} · {{ ins.affected_cities|join(" · ") }}{% endif %}</p>
+        <p class="insight__title">{{ ins.title }}</p>
+        <p class="insight__body">{{ ins.summary }}</p>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <div class="footer">Generated {{ generated_at }} by the Agentic Tour &amp; Promotion Intelligence OS · every figure sourced from grounded campaign data</div>
+  </div>
+
+  <!-- ============ CITY CHAPTERS ============ -->
+  {% for c in cities %}
+  <div class="page">
+    <div class="chapter-band" style="background-color: {{ c.accent }}; background-image: radial-gradient(circle, var(--card) 2.75px, transparent 3.25px);"></div>
+    <div class="pad">
+      <div class="chapter-head">
+        <div>
+          <p class="mono" style="color: {{ c.accent }};">Stop {{ c.sequence_order or loop.index }} · {{ c.stop_date }}{% if c.event_format %} · {{ c.event_format }}{% endif %}</p>
+          <h2 class="serif sheen">{{ c.city_name }}</h2>
+          {% if c.fan_behavior_style %}<p class="subtle" style="margin-top: 6px;">{{ c.fan_behavior_style }}</p>{% endif %}
+        </div>
+        <div style="text-align: right;">
+          <p class="mono">Fan Enthusiasm</p>
+          <p class="kpi__value" style="font-size: 30px; margin: 4px 0 0;">{{ c.score }}</p>
+          {% if c.tier %}<p class="subtle">{{ c.tier }}</p>{% endif %}
+        </div>
+      </div>
+
+      {% if c.demographics %}
+      <div class="section-label"><span class="mono" style="color: {{ c.accent }};">Market Snapshot</span><span class="rule"></span></div>
+      <div class="facts">
+        {% if c.pop_label %}<div class="fact"><p class="mono">Population</p><p class="fact__v">{{ c.pop_label }}</p></div>{% endif %}
+        {% if c.demographics.median_age %}<div class="fact"><p class="mono">Median Age</p><p class="fact__v">{{ c.demographics.median_age }}</p></div>{% endif %}
+        {% if c.income_label %}<div class="fact"><p class="mono">Median Income</p><p class="fact__v">${{ c.income_label }}</p></div>{% endif %}
+        {% if c.demographics.internet_penetration_rate %}<div class="fact"><p class="mono">Internet Penetration</p><p class="fact__v">{{ (c.demographics.internet_penetration_rate * 100) | round | int if c.demographics.internet_penetration_rate <= 1 else c.demographics.internet_penetration_rate | round | int }}%</p></div>{% endif %}
+        {% if c.demographics.literacy_rate %}<div class="fact"><p class="mono">Literacy</p><p class="fact__v">{{ (c.demographics.literacy_rate * 100) | round | int if c.demographics.literacy_rate <= 1 else c.demographics.literacy_rate | round | int }}%</p></div>{% endif %}
+      </div>
+      {% if c.demographics.dominant_social_platforms %}
+      <p class="kv" style="margin-top: 10px;"><b>Dominant platforms:</b> <span class="subtle">{{ c.demographics.dominant_social_platforms | join(", ") }}</span></p>
+      {% endif %}
+      {% if c.demographics.notable_public_holidays %}
+      <p class="kv"><b>Holidays near the window:</b> <span class="subtle">{{ c.demographics.notable_public_holidays | join(", ") }}</span></p>
+      {% endif %}
+      {% endif %}
+
+      {% if c.venue %}
+      <div class="section-label"><span class="mono" style="color: {{ c.accent }};">Venue &amp; Logistics</span><span class="rule"></span></div>
+      {% if c.venue.capacity %}<p class="kv"><b>Capacity:</b> {{ c.venue.capacity }}</p>{% endif %}
+      {% if c.venue.typical_event_format %}<p class="kv"><b>Typical format:</b> {{ c.venue.typical_event_format }}</p>{% endif %}
+      {% if c.venue.logistics_notes %}<p class="kv"><b>Logistics:</b> <span class="subtle">{{ c.venue.logistics_notes }}</span></p>{% endif %}
+      {% if c.venue.technical_rider_notes %}<p class="kv"><b>Technical rider:</b> <span class="subtle">{{ c.venue.technical_rider_notes }}</span></p>{% endif %}
+      {% if c.venue.nearest_airport %}<p class="kv"><b>Nearest airport:</b> <span class="subtle">{{ c.venue.nearest_airport.name }} ({{ c.venue.nearest_airport.distance_or_travel_time }})</span></p>{% endif %}
+      {% if c.venue.nearest_railway_station %}<p class="kv"><b>Nearest rail:</b> <span class="subtle">{{ c.venue.nearest_railway_station.name }} ({{ c.venue.nearest_railway_station.distance_or_travel_time }})</span></p>{% endif %}
+      {% endif %}
+
+      {% if c.talent_brief %}
+      <div class="section-label"><span class="mono" style="color: {{ c.accent }};">Cultural Playbook</span><span class="rule"></span></div>
+      <div class="cols2">
+        <div>
+          <p class="mono" style="margin-bottom: 6px;">Lean Into</p>
+          <ul class="plain">{% for i in c.talent_brief.lean_into %}<li>{{ i }}</li>{% endfor %}</ul>
+        </div>
+        <div>
+          <p class="mono" style="margin-bottom: 6px;">Avoid</p>
+          <ul class="plain avoid">{% for i in c.talent_brief.avoid %}<li>{{ i }}</li>{% endfor %}</ul>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if c.delight %}
+      <div class="section-label"><span class="mono" style="color: {{ c.accent }};">Activation Plan — making this stop land</span><span class="rule"></span></div>
+      {% for p in (c.delight.local_phrases or [])[:3] %}
+      <div class="phrase-card" style="border-left: 3px solid {{ c.accent }};">
+        <p class="phrase-card__phrase">{{ p.phrase }}</p>
+        <p class="phrase-card__sub">
+          {% if p.phonetic %}<span class="phrase-card__phonetic">{{ p.phonetic }}</span>{% endif %}
+          {% if p.meaning %}<span style="font-style: italic;">{{ p.meaning }}</span>{% endif %}
+          {% if p.usage_context %}<span>· {{ p.usage_context }}</span>{% endif %}
+        </p>
+      </div>
+      {% endfor %}
+      <ul class="plain dots" style="margin-top: 8px;">
+        {% for m in c.delight.crowd_moment_suggestions or [] %}<li>{{ m }}</li>{% endfor %}
+        {% for m in c.delight.music_or_remix_ideas or [] %}<li>{{ m }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+
+      {% if c.talent_brief and c.talent_brief.fan_questions %}
+      <div class="section-label"><span class="mono" style="color: {{ c.accent }};">Talent Prep — likely fan questions</span><span class="rule"></span></div>
+      <ul class="plain dots">
+        {% for q in c.talent_brief.fan_questions %}<li>{{ q }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    <div class="footer">
+      {{ campaign.title }} · {{ c.city_name }} · grounding check
+      {% if c.grounding_check_passed %}<span class="ok">passed</span>{% else %}pending{% endif %}
+      {% if c.delight_card_url %} · delight card: {{ c.delight_card_url }}{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+</div>
+</body>
+</html>

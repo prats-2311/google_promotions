@@ -15,6 +15,21 @@ export function getCampaignOverview(campaignId: string) {
   return getJson<CampaignOverview>(`/api/campaigns/${campaignId}/overview`);
 }
 
+// Assembles + renders the whole-campaign executive tour book (the boss-facing
+// document) -- the BFF gathers every stop's real data and the renderer
+// service lays it out; nothing is generated at render time. 60s timeout: it
+// fans out across every stop's lookups before rendering.
+export async function generateTourBook(campaignId: string) {
+  const res = await fetch("/api/tour-book", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ campaign_id: campaignId }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) throw new Error(`tour book failed: ${res.status}`);
+  return res.json() as Promise<{ tour_book_url: string }>;
+}
+
 export function listCampaigns() {
   return getJson<{ campaigns: Campaign[] }>("/api/campaigns");
 }

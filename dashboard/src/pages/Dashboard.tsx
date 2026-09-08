@@ -4,9 +4,9 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   CheckCircle2, Clock, MapPin, Sparkles, Loader2, AlertTriangle, Info, Lightbulb,
-  ShieldCheck, TrendingUp, Trophy, Gauge,
+  ShieldCheck, TrendingUp, Trophy, Gauge, BookOpen,
 } from "lucide-react";
-import { getCampaignOverview, generateBriefs, GenerationAlreadyInFlightError } from "../lib/api";
+import { getCampaignOverview, generateBriefs, generateTourBook, GenerationAlreadyInFlightError } from "../lib/api";
 import { cityAccentOnPaper } from "../lib/cityTheme";
 import { StatMeter } from "../components/ui/StatMeter";
 import { StatTile } from "../components/ui/StatTile";
@@ -98,6 +98,8 @@ export function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [bookBusy, setBookBusy] = useState(false);
+  const [bookError, setBookError] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
   const queryClient = useQueryClient();
 
@@ -157,6 +159,32 @@ export function Dashboard() {
           <h1 className="title-sheen mt-1.5 text-balance font-title text-[42px] leading-none">{data.campaign.title}</h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              // Assembles the whole-campaign executive document from real
+              // data and opens the stored artifact -- the window opens
+              // first (synchronously, so the browser doesn't popup-block
+              // it) and is pointed at the URL when the render lands.
+              setBookError(null);
+              setBookBusy(true);
+              const tab = window.open("about:blank", "_blank");
+              try {
+                const { tour_book_url } = await generateTourBook(activeCampaignId);
+                if (tab) tab.location.href = tour_book_url;
+              } catch (err) {
+                tab?.close();
+                setBookError(String(err));
+              } finally {
+                setBookBusy(false);
+              }
+            }}
+            disabled={bookBusy}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-canvas-line px-3.5 py-2 font-sans text-[13px] text-canvas-text outline-none transition-colors hover:border-gold/50 focus-visible:ring-2 focus-visible:ring-gold focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {bookBusy ? <Loader2 size={14} className="animate-spin text-gold" aria-hidden /> : <BookOpen size={14} className="text-gold" aria-hidden />}
+            {bookBusy ? "Assembling…" : "Tour Book"}
+          </button>
           <CampaignEditChatToggle open={editOpen} onToggle={() => setEditOpen((v) => !v)} />
           {hasPending && (
             <button
@@ -213,6 +241,12 @@ export function Dashboard() {
           onClose={() => setEditOpen(false)}
           onApplied={() => queryClient.invalidateQueries({ queryKey: ["campaignOverview", activeCampaignId] })}
         />
+      )}
+
+      {bookError && (
+        <div className="mb-6 rounded-lg border border-red-900/30 bg-red-950/20 px-3 py-2 font-sans text-[12px] text-red-200">
+          Couldn't assemble the tour book: {bookError}
+        </div>
       )}
 
       {triggerError && (

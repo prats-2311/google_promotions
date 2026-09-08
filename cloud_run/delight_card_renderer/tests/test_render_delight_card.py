@@ -64,7 +64,7 @@ def test_render_html_handles_missing_optional_fields_gracefully():
     assert isinstance(html, str) and len(html) > 0
 
 
-def test_upload_html_uses_configured_bucket_and_brief_id_path(mock_storage_client, monkeypatch):
+def test_upload_html_uses_configured_bucket_and_object_path(mock_storage_client, monkeypatch):
     from unittest.mock import MagicMock as MM
     bucket_mock = MM()
     blob_mock = MM()
@@ -74,7 +74,7 @@ def test_upload_html_uses_configured_bucket_and_brief_id_path(mock_storage_clien
     client_instance.bucket.return_value = bucket_mock
     monkeypatch.setattr(main.storage, "Client", lambda: client_instance)
 
-    url = main._upload_html("<html></html>", "brief-123")
+    url = main._upload_html("<html></html>", "delight-cards/brief-123.html")
 
     client_instance.bucket.assert_called_once_with("test-bucket")
     bucket_mock.blob.assert_called_once_with("delight-cards/brief-123.html")
