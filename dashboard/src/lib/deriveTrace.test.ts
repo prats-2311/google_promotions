@@ -22,6 +22,7 @@ function baseDetail(overrides: Partial<CityDetail> = {}): CityDetail {
     brief: null,
     demographicSnapshot: null,
     pronunciationAudio: null,
+    moodboardTrace: null,
     ...overrides,
   };
 }

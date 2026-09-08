@@ -406,19 +406,35 @@ def synthesize_pronunciation():
     return jsonify({"audio": audio})
 
 
-def _generate_style_moodboard_png(city_name: str, style_notes: str) -> bytes:
+def _moodboard_prompt(city_name: str, style_notes: str, campaign_context: str | None) -> str:
+    """The exact prompt sent to the image model -- factored out so the
+    generation trace in the response can show the REAL prompt (the honest
+    'thinking' of this step), never a reconstruction of it."""
+    # The event being promoted shapes the art, not just the city -- a sci-fi
+    # film promo stop and an alt-pop tour stop in the same city should not
+    # share key art. Context is optional; without it the prompt is the
+    # original city-only moodboard.
+    event_line = (
+        f"The stop is part of a {campaign_context} — let that event's genre inform the palette "
+        f"and energy alongside the local motifs. " if campaign_context else ""
+    )
+    return (
+        f"An abstract style moodboard poster for a touring artist's stop in {city_name}, "
+        f"grounded in this real local color palette and visual motifs: {style_notes}. "
+        f"{event_line}"
+        f"Abstract composition only -- no human faces, no real people, no recognizable public "
+        f"figures, no readable text or logos. Evoke the mood and texture of {city_name} through "
+        f"color, pattern, and shape alone."
+    )
+
+
+def _generate_style_moodboard_png(city_name: str, style_notes: str, campaign_context: str | None = None) -> bytes:
     url = (
         f"https://{_VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
         f"{_GCP_PROJECT}/locations/{_VERTEX_LOCATION}/publishers/google/models/"
         f"{_GEMINI_IMAGE_MODEL}:generateContent"
     )
-    prompt = (
-        f"An abstract style moodboard poster for a touring artist's stop in {city_name}, "
-        f"grounded in this real local color palette and visual motifs: {style_notes}. "
-        f"Abstract composition only -- no human faces, no real people, no recognizable public "
-        f"figures, no readable text or logos. Evoke the mood and texture of {city_name} through "
-        f"color, pattern, and shape alone."
-    )
+    prompt = _moodboard_prompt(city_name, style_notes, campaign_context)
     res = requests.post(
         url,
         headers={"Authorization": f"Bearer {_get_access_token()}", "Content-Type": "application/json"},
@@ -434,17 +450,22 @@ def _generate_style_moodboard_png(city_name: str, style_notes: str) -> bytes:
     return base64.b64decode(inline["data"])
 
 
-def _get_or_generate_style_moodboard(city_id: str, city_name: str, style_notes: str) -> str:
-    # Content-hashed on (city_id, style_notes): a re-request with the same
-    # grounded style brief skips both the image-gen call and the upload --
-    # same caching shape as pronunciation audio above.
-    digest = hashlib.sha256(f"{city_id}:{style_notes}".encode("utf-8")).hexdigest()[:16]
+def _get_or_generate_style_moodboard(
+    city_id: str, city_name: str, style_notes: str, campaign_context: str | None = None
+) -> tuple[str, bool]:
+    # Content-hashed on (city_id, campaign_context, style_notes): a
+    # re-request with the same grounded style brief skips both the image-gen
+    # call and the upload, while two different campaigns in the same city
+    # hash to different artifacts -- same caching shape as pronunciation
+    # audio above.
+    digest = hashlib.sha256(f"{city_id}:{campaign_context or ''}:{style_notes}".encode("utf-8")).hexdigest()[:16]
     bucket = _storage_client.bucket(_DELIGHT_CARD_BUCKET)
     blob = bucket.blob(f"style-moodboards/{digest}.png")
-    if not blob.exists():
-        png_bytes = _generate_style_moodboard_png(city_name, style_notes)
+    cached = blob.exists()
+    if not cached:
+        png_bytes = _generate_style_moodboard_png(city_name, style_notes, campaign_context)
         blob.upload_from_string(png_bytes, content_type="image/png")
-    return blob.public_url
+    return blob.public_url, cached
 
 
 @app.post("/generate_style_moodboard")
@@ -458,15 +479,30 @@ def generate_style_moodboard():
     city_id = payload.get("city_id")
     city_name = payload.get("city_name")
     style_notes = payload.get("style_notes")
+    campaign_context = payload.get("campaign_context")
     if not city_id or not city_name or not style_notes:
         return jsonify({"error": "missing required fields: city_id, city_name, style_notes"}), 400
     if not _storage_client:
         return jsonify({"error": "DELIGHT_CARD_BUCKET is not configured on this service"}), 500
     try:
-        url = _get_or_generate_style_moodboard(city_id, city_name, style_notes)
+        url, cached = _get_or_generate_style_moodboard(city_id, city_name, style_notes, campaign_context)
     except (requests.HTTPError, KeyError, ValueError) as e:
         return jsonify({"error": f"style moodboard generation failed: {e}"}), 502
-    return jsonify({"city_id": city_id, "moodboard_url": url})
+    # generation_trace is the honest "thinking" of this step, surfaced in the
+    # UI: the REAL grounded signals selected, the REAL event context, and the
+    # EXACT prompt sent to the image model -- same never-fabricate-a-trace
+    # discipline as the dashboard's deriveTrace (dashboard/CLAUDE.md).
+    return jsonify({
+        "city_id": city_id,
+        "moodboard_url": url,
+        "generation_trace": {
+            "style_notes": style_notes,
+            "campaign_context": campaign_context,
+            "prompt": _moodboard_prompt(city_name, style_notes, campaign_context),
+            "model": _GEMINI_IMAGE_MODEL,
+            "cached": cached,
+        },
+    })
 
 
 @app.get("/culture_notes")

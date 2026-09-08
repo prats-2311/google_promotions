@@ -210,6 +210,54 @@ function artistTypeFor(campaignType) {
   return campaignType === "music_world_tour" ? "musician" : "film_cast";
 }
 
+// Mirrors orchestration_driver/run_campaign.py's _style_notes_from_collected
+// recipe exactly: the image prompt is grounded ONLY in real gathered
+// culture/local-delight signals, never a generic default. null when nothing
+// real is available -- no style notes, no image.
+function styleNotesFrom(cultureNotes, localDelight) {
+  const parts = [];
+  if (cultureNotes?.greeting_style) parts.push(cultureNotes.greeting_style);
+  if (localDelight?.cultural_references?.length) parts.push(localDelight.cultural_references.join(", "));
+  if (localDelight?.crowd_moment_suggestions?.length) {
+    parts.push(localDelight.crowd_moment_suggestions.slice(0, 2).join(", "));
+  }
+  return parts.length ? parts.join("; ") : null;
+}
+
+// "sci-fi action film promo tour" -- the event context the user's key art
+// should reflect alongside the city's own motifs.
+function campaignContextFor(campaign) {
+  return `${campaign.genre ?? ""} ${String(campaign.campaign_type ?? "").replace(/_/g, " ")}`.trim();
+}
+
+// Backfills city key art on demand: briefs generated before the moodboard
+// feature (or whose generation failed) have no image -- generate one now
+// from the same grounded signals, campaign-aware. Content-hashed server-side,
+// so repeats are a lookup, not a second Gemini call. Never blocks the caller:
+// a failure just means no image, same graceful-degrade contract as the
+// orchestration driver's own moodboard call.
+async function ensureMoodboard({ cityId, cityName, campaign, cultureNotes, localDelight, existingUrl }) {
+  if (existingUrl) return { url: existingUrl, trace: null };
+  const styleNotes = styleNotesFrom(cultureNotes, localDelight);
+  if (!styleNotes) return { url: null, trace: null };
+  try {
+    const result = await callTool("/generate_style_moodboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        city_id: cityId,
+        city_name: cityName,
+        style_notes: styleNotes,
+        campaign_context: campaignContextFor(campaign),
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+    return { url: result.moodboard_url ?? null, trace: result.generation_trace ?? null };
+  } catch {
+    return { url: null, trace: null };
+  }
+}
+
 function slugify(text) {
   return text
     .trim()
@@ -418,12 +466,22 @@ app.post("/api/tour-book", async (req, res) => {
     const cities = await Promise.all(
       stopsResp.stops.map(async (stop) => {
         const brief = briefByCity[stop.city_id] ?? null;
-        const [signal, delight] = await Promise.all([
+        const [signal, delight, cultureNotes] = await Promise.all([
           cachedCallTool(
             `/fan_signals?city_id=${stop.city_id}&genre=${encodeURIComponent(campaign.genre)}&artist_type=${artistTypeFor(campaign.campaign_type)}`
           ).catch(() => null),
           cachedCallTool(`/local_delight?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
+          cachedCallTool(`/culture_notes?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
         ]);
+
+        const moodboard = await ensureMoodboard({
+          cityId: stop.city_id,
+          cityName: stop.city_name,
+          campaign,
+          cultureNotes,
+          localDelight: delight,
+          existingUrl: brief?.style_moodboard_url ?? null,
+        });
 
         const rawBrief = safeParse(brief?.talent_brief_json);
         const talentBrief = rawBrief
@@ -446,6 +504,12 @@ app.post("/api/tour-book", async (req, res) => {
           demographics: safeParse(brief?.demographic_snapshot_json),
           venue: safeParse(brief?.venue_notes_json),
           talent_brief: talentBrief,
+          style_moodboard_url: moodboard.url,
+          moodboard_provenance: moodboard.trace
+            ? `Key art: ${moodboard.trace.model} · prompted from grounded ${stop.city_name} motifs · ${moodboard.trace.campaign_context}`
+            : moodboard.url
+              ? "Key art generated from grounded local motifs"
+              : null,
           delight: delight
             ? {
                 local_phrases: delight.local_phrases ?? [],
@@ -520,6 +584,24 @@ app.get("/api/campaigns/:campaignId/cities/:cityId", async (req, res) => {
       }
     }
 
+    // Campaign-aware key art, backfilled on demand for briefs generated
+    // before the moodboard feature -- filled into the response (not the
+    // stored brief row) so the Delight tab always has an image plus the
+    // honest generation trace to show alongside it.
+    let moodboardTrace = null;
+    if (brief) {
+      const moodboard = await ensureMoodboard({
+        cityId,
+        cityName: stop?.city_name ?? cityId,
+        campaign,
+        cultureNotes,
+        localDelight,
+        existingUrl: brief.style_moodboard_url ?? null,
+      });
+      if (moodboard.url && !brief.style_moodboard_url) brief.style_moodboard_url = moodboard.url;
+      moodboardTrace = moodboard.trace;
+    }
+
     res.json({
       campaign,
       stop,
@@ -529,6 +611,7 @@ app.get("/api/campaigns/:campaignId/cities/:cityId", async (req, res) => {
       brief,
       demographicSnapshot,
       pronunciationAudio,
+      moodboardTrace,
     });
   } catch (err) {
     res.status(502).json({ error: String(err) });

@@ -251,6 +251,19 @@ export interface PronunciationAudio {
   error?: string;
 }
 
+// The honest "thinking" behind a generated key-art image: the real grounded
+// signals selected, the real event context, and the EXACT prompt sent to the
+// image model -- never a reconstructed rationale (same discipline as
+// deriveTrace, see dashboard/CLAUDE.md). null when the image predates this
+// trace or came from the brief row.
+export interface MoodboardTrace {
+  style_notes: string;
+  campaign_context: string | null;
+  prompt: string;
+  model: string;
+  cached: boolean;
+}
+
 export interface CityDetail {
   campaign: Campaign;
   stop: CampaignStop;
@@ -260,6 +273,7 @@ export interface CityDetail {
   brief: CityBrief | null;
   demographicSnapshot: DemographicSnapshot | null;
   pronunciationAudio: PronunciationAudio[] | null;
+  moodboardTrace: MoodboardTrace | null;
 }
 
 export interface TraceStep {

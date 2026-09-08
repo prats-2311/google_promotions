@@ -1203,12 +1203,57 @@ function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) 
 
       <div className="lg:col-span-2 space-y-5">
         {brief?.style_moodboard_url && (
-          <div className="overflow-hidden rounded-2xl bg-paper">
+          <div className="overflow-hidden rounded-2xl border border-white/[0.06] bg-paper">
             <img
               src={brief.style_moodboard_url}
-              alt={`Abstract style moodboard for ${data.stop.city_name}, grounded in local cultural motifs`}
+              alt={`Abstract key art for ${data.stop.city_name}, generated from grounded local motifs`}
               className="aspect-square w-full object-cover"
             />
+            {/* The agent's honest "thinking" for this image: the real
+                grounded signals it selected, the event context, and the
+                exact prompt it sent -- never a fabricated rationale
+                (dashboard/CLAUDE.md's deriveTrace discipline). */}
+            {data.moodboardTrace && (
+              <div className="p-4">
+                <Accordion
+                  accent={accent}
+                  type="single"
+                  items={[
+                    {
+                      id: "moodboard-trace",
+                      title: "How this key art was generated",
+                      meta: data.moodboardTrace.cached ? "cached" : "freshly generated",
+                      content: (
+                        <div className="space-y-2.5">
+                          <div>
+                            <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+                              1 · Grounded signals selected
+                            </p>
+                            <p className="mt-0.5 text-[12px] leading-relaxed">{data.moodboardTrace.style_notes}</p>
+                          </div>
+                          {data.moodboardTrace.campaign_context && (
+                            <div>
+                              <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+                                2 · Event context applied
+                              </p>
+                              <p className="mt-0.5 text-[12px] leading-relaxed">{data.moodboardTrace.campaign_context}</p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.12em] text-ink-muted">
+                              3 · Exact prompt sent to {data.moodboardTrace.model}
+                            </p>
+                            <p className="mt-0.5 rounded-lg bg-paper-raised p-2.5 font-mono text-[10.5px] leading-relaxed">
+                              {data.moodboardTrace.prompt}
+                            </p>
+                          </div>
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            )}
           </div>
         )}
         <div className="rounded-2xl bg-paper p-6">
