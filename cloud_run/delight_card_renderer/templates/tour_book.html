@@ -133,8 +133,10 @@
   .chart { margin-top: 6px; }
   .bar-row { display: grid; grid-template-columns: 110px 1fr 52px; align-items: center; gap: 12px; padding: 5px 0; }
   .bar-row .name { font-size: 12.5px; font-weight: 600; }
-  .bar-track { height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-  .bar-fill { height: 100%; border-radius: 999px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .bar-track { display: block; height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  /* display:block is load-bearing -- an empty inline span paints at zero
+     size no matter what width/height say (found live: grey tracks, no fills). */
+  .bar-fill { display: block; height: 100%; border-radius: 999px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .bar-val { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 
   /* Insights */
