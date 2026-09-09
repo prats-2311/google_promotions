@@ -78,6 +78,7 @@ decide to run longer — drop them in only if you're comfortable exceeding 3:00.
 - **Why do chats only search on titles and current-events questions?** Latency and cost — live search exactly where a hallucination would be dangerous, instant Gemini everywhere else.
 - **Why review-before-apply on edits?** The edit chat mutates a live campaign; the strategy chat only pre-fills a local form. Different blast radius, different UX.
 - **Why show exact prompts for images/music?** Same no-fabricated-reasoning rule as the brief traces. If we generated it, you can see precisely from what.
+- **Why do strategy attachments accept .txt/.md/.csv/.tsv/.json but not .docx/.pdf?** Deliberate scope, twice over. Attachments are read privately client-side (`FileReader`) — the document only ever exists in the planner's browser and the model prompt, never at rest on our servers — and that works only for plain-text formats. A .docx is a ZIP of XML; a .pdf is a binary object graph where scanned documents have no text layer at all, so client-side extraction (pdf.js) can silently return *empty text* while appearing to have read the doc — an honesty trap this product refuses everywhere else. The designed fix is server-side: a small upload endpoint handing the PDF straight to **Gemini's native PDF understanding** on Vertex (layout, tables, even scanned pages — no extraction library at all), deleted after the turn. Right feature, wrong final-day risk.
 
 ---
 
