@@ -20,40 +20,127 @@ decide to run longer — drop them in only if you're comfortable exceeding 3:00.
 ---
 
 ### BEAT 1 — the why, cold open [0:00–0:18]
-**DO:** Start on the Nova Horizon dashboard. Don't move the mouse yet.
-**SAY:** *"Global tours fail city-by-city for a boring reason: nobody has time to research every city properly. Tour Intelligence is a multi-agent system on Google Cloud that does that research — and everything you'll see is real data the agents fetched, verified, and wrote. Nothing on this screen is mocked."*
+
+**DO**
+- Start on the Nova Horizon dashboard.
+- Don't move the mouse yet.
+
+**SAY**
+- *"Global tours fail city-by-city for a boring reason: nobody has time to research every city properly."*
+- *"Tour Intelligence is a multi-agent system on Google Cloud that does that research —"*
+- *"— and everything you'll see is real data the agents fetched, verified, and wrote."*
+- *"Nothing on this screen is mocked."*
+
 *(Why: judges' #1 filter is "is this real or a chat wrapper". Claim it in sentence one, then spend 3 minutes proving it.)*
 
 ### BEAT 2 — creating a campaign, with the AI co-planner [0:18–0:55]
-**DO:** Sidebar → active-campaign switcher → **New Campaign**. Click a suggestion chip (or the mic button — mention it), let the assistant reply, show the form fields filling live. Point at the "Researched …" line if a title was mentioned.
-**SAY:** *"Campaign creation starts with an AI co-planner. Every turn is Gemini with a schema-constrained JSON response — that's why it can fill this real form live instead of just chatting. And two things trigger a live Parallel web search mid-conversation: name a film or franchise, and it researches it with citations before replying; ask anything time-sensitive and it refuses to answer from stale training data — it searches, then answers with sources. We route to live search only where grounding matters — that's the design rule everywhere: Gemini reasons, Parallel grounds, and the two are never confused."*
-**DO (quick):** point at the metrics section — add a custom metric chip, open "Customize metrics for this stop" on one city.
-**SAY:** *"Planners aren't boxed in — six campaign types, their own custom metrics, even different metrics per city, resolved later by live search."*
+
+**DO**
+- Sidebar → active-campaign switcher → **New Campaign**.
+- Click a suggestion chip (or the mic button — mention it).
+- Let the assistant reply; show the form fields filling live.
+- Point at the "Researched …" line if a title was mentioned.
+
+**SAY**
+- *"Campaign creation starts with an AI co-planner."*
+- *"Every turn is Gemini with a schema-constrained JSON response — that's why it can fill this real form live instead of just chatting."*
+- *"And two things trigger a live Parallel web search mid-conversation:"*
+- *"name a film or franchise, and it researches it with citations before replying;"*
+- *"ask anything time-sensitive and it refuses to answer from stale training data — it searches, then answers with sources."*
+- *"We route to live search only where grounding matters — that's the design rule everywhere:"*
+- *"Gemini reasons, Parallel grounds, and the two are never confused."*
+
+**DO (quick)**
+- Point at the metrics section — add a custom metric chip.
+- Open "Customize metrics for this stop" on one city.
+
+**SAY**
+- *"Planners aren't boxed in — six campaign types, their own custom metrics,"*
+- *"even different metrics per city, resolved later by live search."*
+
 *(Why: shows the assistant is an agent with structured outputs, not a chatbot; shows the two Parallel triggers and the reason they exist.)*
 
 ### BEAT 3 — what actually happens on create [0:55–1:30]
-**DO:** Back to dashboard (Nova Horizon). Open Mumbai → expand **"How this brief was generated"** (the 11-step trace).
-**SAY:** *"When briefs generate, five Dialogflow CX Playbook agents run — Culture Intelligence, Fan Enthusiasm, Local Delight, Talent Prep, and an Orchestrator. Our core architecture rule is 'the LLM reasons, code acts': agents gather intelligence conversationally, but synthesis, the grounding check, and every BigQuery write are deterministic code. Talent Prep even hands its draft BACK to Culture Intelligence for verification — a real two-way handoff. And this trace isn't decoration: it's reconstructed from the actual tool calls. We never fabricate reasoning, anywhere in this product."*
+
+**DO**
+- Back to dashboard (Nova Horizon).
+- Open Mumbai → expand **"How this brief was generated"** (the 11-step trace).
+
+**SAY**
+- *"When briefs generate, five Dialogflow CX Playbook agents run —"*
+- *"Culture Intelligence, Fan Enthusiasm, Local Delight, Talent Prep, and an Orchestrator."*
+- *"Our core architecture rule is 'the LLM reasons, code acts':"*
+- *"agents gather intelligence conversationally, but synthesis, the grounding check, and every BigQuery write are deterministic code."*
+- *"Talent Prep even hands its draft BACK to Culture Intelligence for verification — a real two-way handoff."*
+- *"And this trace isn't decoration: it's reconstructed from the actual tool calls."*
+- *"We never fabricate reasoning, anywhere in this product."*
+
 *(Why: this is the "agents that act" judging criterion plus the honesty discipline, delivered over a real artifact.)*
 
 ### BEAT 4 — country-specific intelligence & which Parallel powers what [1:30–2:05]
-**DO:** Stay on Mumbai. Culture tab: sweep past Greeting/Etiquette, Lean-Into/Avoid, Market Snapshot; hover the Live Operations row (visa, weather, drift checks). Then Delight tab: phrase flashcards → the Gemini-3 key art → expand **"How this key art was generated"** → then click play on the **entrance sting**.
-**SAY:** *"Every city detail here is grounded, and the sourcing is deliberate. Five demo cities run on curated BigQuery data — fast and deterministic. Any OTHER city falls back to Parallel's Search API live: culture, local delight, demographics, venues, crew, visa lead-times by nationality, seasonal weather. Parallel's Task API researches brand-new cities; Parallel Monitors continuously watch for cultural drift and safety issues after a brief is written. Everything live still passes the same grounding check as curated data before it's trusted. Then the generative layer: Gemini 3 renders each city's key art from those real motifs — and shows you the exact prompt it used. And Lyria composes the entrance sting."* (let 2 seconds of the sting play)
+
+**DO**
+- Stay on Mumbai. Culture tab: sweep past Greeting/Etiquette, Lean-Into/Avoid, Market Snapshot.
+- Hover the Live Operations row (visa, weather, drift checks).
+- Then Delight tab: phrase flashcards → the Gemini-3 key art.
+- Expand **"How this key art was generated"**.
+- Then click play on the **entrance sting**.
+
+**SAY**
+- *"Every city detail here is grounded, and the sourcing is deliberate."*
+- *"Five demo cities run on curated BigQuery data — fast and deterministic."*
+- *"Any OTHER city falls back to Parallel's Search API live:"*
+- *"culture, local delight, demographics, venues, crew, visa lead-times by nationality, seasonal weather."*
+- *"Parallel's Task API researches brand-new cities;"*
+- *"Parallel Monitors continuously watch for cultural drift and safety issues after a brief is written."*
+- *"Everything live still passes the same grounding check as curated data before it's trusted."*
+- *"Then the generative layer: Gemini 3 renders each city's key art from those real motifs — and shows you the exact prompt it used."*
+- *"And Lyria composes the entrance sting."* (let 2 seconds of the sting play)
+
 *(Why: this is their question "which Parallel search for each task" answered on camera, plus the GenMedia trifecta with visible provenance.)*
 
 ### BEAT 5 — editing live campaigns, safely [2:05–2:25]
-**DO:** Back to dashboard → **Edit with assistant** → type "Add a stop in Berlin on November 10th" → show the review diff → click **Discard** (don't apply on camera).
-**SAY:** *"Ongoing campaigns are edited the same way — conversationally. But this assistant writes to a LIVE campaign, so nothing applies until the planner reviews the exact diff. Chat history survives refreshes and follows you across devices — it's stored in BigQuery like everything else."*
+
+**DO**
+- Back to dashboard → **Edit with assistant**.
+- Type "Add a stop in Berlin on November 10th".
+- Show the review diff.
+- Click **Discard** (don't apply on camera).
+
+**SAY**
+- *"Ongoing campaigns are edited the same way — conversationally."*
+- *"But this assistant writes to a LIVE campaign, so nothing applies until the planner reviews the exact diff."*
+- *"Chat history survives refreshes and follows you across devices — it's stored in BigQuery like everything else."*
+
 *(Why: agentic writes + human-in-the-loop; the safety design IS the feature.)*
 
 ### BEAT 6 — the Tour Book + the MCP story [2:25–2:50]
-**DO:** Click **Tour Book**. Scroll the cover (charts) then one chapter (key art, market snapshot, sting player). Press ⌘P for one second to flash the print view, then cancel.
-**SAY:** *"One click assembles the Executive Tour Book — the document a planner hands their boss. Itinerary, market data, activation plans, the generated media. Command-P and it's the PDF. And the whole system is built for AI control at every layer: our agents consume these tools internally, a real MCP server exposes the same tools to any external agent, and through Chrome's WebMCP, the dashboard registers its own functions — create campaign, generate briefs — as tools a browser-side agent can drive directly. Agents all the way down, by design."*
+
+**DO**
+- Click **Tour Book**.
+- Scroll the cover (charts) then one chapter (key art, market snapshot, sting player).
+- Press ⌘P for one second to flash the print view, then cancel.
+
+**SAY**
+- *"One click assembles the Executive Tour Book — the document a planner hands their boss."*
+- *"Itinerary, market data, activation plans, the generated media."*
+- *"Command-P and it's the PDF."*
+- *"And the whole system is built for AI control at every layer:"*
+- *"our agents consume these tools internally,"*
+- *"a real MCP server exposes the same tools to any external agent,"*
+- *"and through Chrome's WebMCP, the dashboard registers its own functions — create campaign, generate briefs — as tools a browser-side agent can drive directly."*
+- *"Agents all the way down, by design."*
+
 *(Why: their WebMCP/MCP ask — one breath, three layers, and the word "why".)*
 
 ### BEAT 7 — close [2:50–3:00]
-**DO:** Rest on the dashboard.
-**SAY:** *"Gemini, Agent Builder, Cloud Run, BigQuery, Parallel — Tour Intelligence. Agents that act, grounded end to end."*
+
+**DO**
+- Rest on the dashboard.
+
+**SAY**
+- *"Gemini, Agent Builder, Cloud Run, BigQuery, Parallel — Tour Intelligence."*
+- *"Agents that act, grounded end to end."*
 
 ---
 
