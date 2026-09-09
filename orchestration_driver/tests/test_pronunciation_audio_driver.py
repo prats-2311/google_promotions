@@ -30,3 +30,26 @@ def test_http_error_degrades_to_none_instead_of_raising():
         result = run_campaign._synthesize_pronunciation_audio(["Namaste!"], "fake-token")
 
     assert result is None
+
+
+def test_phrases_with_audio_merges_by_phrase():
+    phrases = [{"phrase": "Namaste!", "meaning": "Hello"}, {"phrase": "Dhanyavaad"}]
+    audio = [
+        {"phrase": "Namaste!", "audio_url": "https://x/n.wav"},
+        {"phrase": "Dhanyavaad", "audio_url": None},
+    ]
+    merged = run_campaign._phrases_with_audio(phrases, audio)
+    assert merged[0] == {"phrase": "Namaste!", "meaning": "Hello", "audio_url": "https://x/n.wav"}
+    assert merged[1] == {"phrase": "Dhanyavaad"}
+
+
+def test_phrases_with_audio_passes_through_when_synthesis_skipped():
+    phrases = [{"phrase": "Namaste!"}]
+    assert run_campaign._phrases_with_audio(phrases, None) == phrases
+
+
+def test_phrases_with_audio_tolerates_bare_string_phrases():
+    merged = run_campaign._phrases_with_audio(
+        ["Namaste!"], [{"phrase": "Namaste!", "audio_url": "https://x/n.wav"}]
+    )
+    assert merged == [{"phrase": "Namaste!", "audio_url": "https://x/n.wav"}]

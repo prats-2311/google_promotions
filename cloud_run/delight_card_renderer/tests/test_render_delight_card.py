@@ -80,3 +80,19 @@ def test_upload_html_uses_configured_bucket_and_object_path(mock_storage_client,
     bucket_mock.blob.assert_called_once_with("delight-cards/brief-123.html")
     blob_mock.upload_from_string.assert_called_once_with("<html></html>", content_type="text/html")
     assert url == "https://x/y.html"
+
+
+def test_phrase_pronunciation_audio_renders_when_present():
+    """A phrase with a synthesized clip gets an inline player on the card --
+    same artifact parity as the tour book's phrase players."""
+    html = main._render_html({
+        "brief_id": "b1",
+        "city_id": "mumbai",
+        "local_phrases": [
+            {"phrase": "Namaste Mumbai!", "phonetic": "nuh-mas-tay", "meaning": "Hello!",
+             "audio_url": "https://x/namaste.wav"},
+            {"phrase": "Kya haal hai?", "meaning": "How are you?"},
+        ],
+    })
+    assert 'preload="none" src="https://x/namaste.wav">' in html
+    assert html.count("<audio") == 1

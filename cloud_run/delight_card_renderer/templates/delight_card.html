@@ -130,6 +130,7 @@
   .phrase-card__sub { margin: 3px 0 0; font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
   .phrase-card__phonetic { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10.5px; letter-spacing: 0.02em; }
   .phrase-card__meaning { font-style: italic; }
+  .phrase-audio { width: 100%; height: 26px; margin-top: 8px; }
 
   /* Lean Into / Avoid share one row -- halves the card's length and lets
      the do/don't contrast read side by side. */
@@ -287,6 +288,9 @@
             {% if p.phonetic %}<span class="phrase-card__phonetic">{{ p.phonetic }}</span>{% endif %}
             {% if p.meaning %}<span class="phrase-card__meaning">{{ p.meaning }}</span>{% endif %}
           </p>
+          {% if p.audio_url %}
+          <audio class="phrase-audio" controls preload="none" src="{{ p.audio_url }}"></audio>
+          {% endif %}
         </div>
         {% endfor %}
       </div>

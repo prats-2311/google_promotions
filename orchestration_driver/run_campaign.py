@@ -242,6 +242,23 @@ def _synthesize_draft_brief(city_name: str, collected: dict, revision_notes: str
     return "\n".join(texts)
 
 
+def _phrases_with_audio(local_phrases: list, pronunciation_audio: list[dict] | None) -> list:
+    """Merge each phrase's synthesized clip into the render payload so the
+    delight card can show a player -- synthesis failures (audio None) leave
+    the phrase untouched rather than rendering a dead control."""
+    if not pronunciation_audio:
+        return local_phrases
+    url_by_phrase = {a["phrase"]: a.get("audio_url") for a in pronunciation_audio}
+    merged = []
+    for p in local_phrases:
+        entry = dict(p) if isinstance(p, dict) else {"phrase": p}
+        url = url_by_phrase.get(entry.get("phrase"))
+        if url:
+            entry["audio_url"] = url
+        merged.append(entry)
+    return merged
+
+
 def _synthesize_pronunciation_audio(phrases: list[str], identity_token: str) -> list[dict] | None:
     """Real Gemini TTS audio per local phrase -- a nice-to-have on top of the
     core brief, never allowed to block it. A failure here (TTS quota, a
@@ -631,6 +648,13 @@ def run_city(
     brief_id = f"{campaign_id}-{city_id}-live-001"
     local_phrases = (collected.get("local_delight") or {}).get("local_phrases", [])[:3]
 
+    # Synthesized BEFORE the card render so each phrase's player makes it onto
+    # the artifact, not just the BigQuery row.
+    pronunciation_audio = _synthesize_pronunciation_audio(
+        [p["phrase"] if isinstance(p, dict) else p for p in local_phrases], tour_data_token
+    )
+    local_phrases = _phrases_with_audio(local_phrases, pronunciation_audio)
+
     render_payload = {
         "brief_id": brief_id,
         "campaign_title": campaign_title,
@@ -649,10 +673,6 @@ def run_city(
     )
     render_resp.raise_for_status()
     delight_card_url = render_resp.json()["delight_card_url"]
-
-    pronunciation_audio = _synthesize_pronunciation_audio(
-        [p["phrase"] if isinstance(p, dict) else p for p in local_phrases], tour_data_token
-    )
 
     style_notes = _style_notes_from_collected(collected)
     style_moodboard_url = (
