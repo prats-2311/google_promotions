@@ -2512,7 +2512,7 @@ class LiveQueryValidationError(ValueError):
 
 # Letters (any script), digits, spaces, and light punctuation only -- no
 # braces/brackets/colons/angle-quotes, the raw material of injection attempts.
-_LIVE_QUERY_ALLOWED = re.compile(r"^[\w\s'\.,\-\?]{3,80}$")
+_LIVE_QUERY_ALLOWED = re.compile(r"^[\w\s'\.,\-\?\u2013\u2014]{3,80}$")
 
 
 def _validate_live_query(query) -> str:
@@ -2594,7 +2594,7 @@ class StingIdeaValidationError(ValueError):
     injection hygiene as every user-influenced prompt field."""
 
 
-_STING_IDEA_ALLOWED = re.compile(r"^[\w\s'%\.,\-/]{3,160}$")
+_STING_IDEA_ALLOWED = re.compile(r"^[\w\s'%\.,\-/\u2013\u2014]{3,160}$")
 
 
 def _validate_sting_idea(idea) -> str:
@@ -2677,7 +2677,7 @@ class MetricNameValidationError(ValueError):
     city_name/live_search_query."""
 
 
-_METRIC_NAME_ALLOWED = re.compile(r"^[\w\s'%\.,\-/]{2,60}$")
+_METRIC_NAME_ALLOWED = re.compile(r"^[\w\s'%\.,\-/\u2013\u2014]{2,60}$")
 
 
 def _validate_metric_name(metric) -> str:

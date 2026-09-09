@@ -55,6 +55,7 @@ def _render_html(brief: dict) -> str:
         avoid_list=talent_brief.get("avoid", []),
         fan_questions=talent_brief.get("fan_questions", []),
         grounding_check_passed=brief.get("grounding_check_passed", False),
+        sting_url=brief.get("sting_url"),
     )
 
 

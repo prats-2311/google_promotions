@@ -94,3 +94,10 @@ def test_lyria_error_returns_502(client, mock_storage_client, monkeypatch):
         "city_id": "mumbai", "city_name": "Mumbai", "sting_idea": "a brief sting",
     })
     assert res.status_code == 502
+
+
+def test_em_dash_in_curated_cue_is_accepted():
+    """Real curated cue text uses em dashes ("An understated entrance — avoid
+    over-produced fanfare") -- typographic dashes carry no injection value
+    and must pass. Found live as a 400 during pre-warm (2026-09-09)."""
+    assert "understated" in main._validate_sting_idea("An understated entrance \u2014 avoid over-produced fanfare")

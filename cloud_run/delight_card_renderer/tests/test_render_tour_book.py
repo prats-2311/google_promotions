@@ -94,3 +94,11 @@ def test_fmt_compact():
     assert main._fmt_compact(12500000) == "12.5M"
     assert main._fmt_compact(85000) == "85K"
     assert main._fmt_compact(None) == "—"
+
+
+def test_tour_book_embeds_entrance_sting_when_present():
+    p = _payload()
+    p["cities"][0]["sting_url"] = "https://x/sting.wav"
+    p["cities"][0]["delight"] = {"local_phrases": [], "crowd_moment_suggestions": [], "music_or_remix_ideas": ["a sting"]}
+    html = main._render_tour_book(p)
+    assert '<audio controls preload="none" src="https://x/sting.wav">' in html

@@ -246,6 +246,30 @@ function campaignContextFor(campaign) {
   return `${campaign.genre ?? ""} ${String(campaign.campaign_type ?? "").replace(/_/g, " ")}`.trim();
 }
 
+// The playable entrance sting for a stop (Lyria), from the city's real
+// first cue idea -- cached server-side by content hash, best-effort by
+// contract: no cue or a failure just means the book omits the audio.
+async function ensureSting({ cityId, cityName, campaign, localDelight }) {
+  const idea = localDelight?.music_or_remix_ideas?.[0];
+  if (!idea) return null;
+  try {
+    const r = await callTool("/generate_entrance_sting", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        city_id: cityId,
+        city_name: cityName,
+        sting_idea: idea,
+        campaign_context: campaignContextFor(campaign),
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+    return r.sting_url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Backfills city key art on demand: briefs generated before the moodboard
 // feature (or whose generation failed) have no image -- generate one now
 // from the same grounded signals, campaign-aware. Content-hashed server-side,
@@ -550,14 +574,17 @@ app.post("/api/tour-book", async (req, res) => {
           cachedCallTool(`/city_demographics?city_id=${encodeURIComponent(stop.city_id)}`).catch(() => null),
         ]);
 
-        const moodboard = await ensureMoodboard({
-          cityId: stop.city_id,
-          cityName: stop.city_name,
-          campaign,
-          cultureNotes,
-          localDelight: delight,
-          existingUrl: brief?.style_moodboard_url ?? null,
-        });
+        const [moodboard, stingUrl] = await Promise.all([
+          ensureMoodboard({
+            cityId: stop.city_id,
+            cityName: stop.city_name,
+            campaign,
+            cultureNotes,
+            localDelight: delight,
+            existingUrl: brief?.style_moodboard_url ?? null,
+          }),
+          ensureSting({ cityId: stop.city_id, cityName: stop.city_name, campaign, localDelight: delight }),
+        ]);
 
         const rawBrief = safeParse(brief?.talent_brief_json);
         const talentBrief = rawBrief
@@ -581,6 +608,7 @@ app.post("/api/tour-book", async (req, res) => {
           venue: safeParse(brief?.venue_notes_json),
           talent_brief: talentBrief,
           style_moodboard_url: moodboard.url,
+          sting_url: stingUrl,
           moodboard_provenance: moodboard.trace
             ? `Key art: ${moodboard.trace.model} · prompted from grounded ${stop.city_name} motifs · ${moodboard.trace.campaign_context}`
             : moodboard.url
