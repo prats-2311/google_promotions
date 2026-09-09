@@ -396,6 +396,20 @@ app.post("/api/campaign-edit-chat", async (req, res) => {
 // Server tier of the two-tier chat history (localStorage is the instant
 // tier): deliberately NOT cachedCallTool -- a session read must reflect the
 // latest save, and the writes are the user's own conversation.
+app.post("/api/entrance-sting", async (req, res) => {
+  try {
+    const result = await callTool("/generate_entrance_sting", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(120000),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: String(err) });
+  }
+});
+
 app.post("/api/live-metric-search", async (req, res) => {
   try {
     const result = await callTool("/live_metric_search", {

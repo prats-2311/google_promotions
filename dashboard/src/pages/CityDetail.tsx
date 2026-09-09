@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { StatMeter } from "../components/ui/StatMeter";
 import { StatTile } from "../components/ui/StatTile";
-import { getCityDetail, getLiveMetric } from "../lib/api";
+import { generateEntranceSting, getCityDetail, getLiveMetric } from "../lib/api";
 import type { CityDetail as CityDetailData, LiveMetricResult, TalentBrief, TraceStep } from "../lib/types";
 import { cityAccent, cityAccentOnPaper } from "../lib/cityTheme";
 import { ThinkingTrace, type TraceStepItem } from "../components/ui/ThinkingTrace";
@@ -1250,6 +1250,71 @@ function VenueNotesCard({ notes, accent }: { notes: VenueNotes; accent: string }
   );
 }
 
+// The cue idea, made audible: a real Lyria-generated instrumental sting,
+// on demand, with the same honest trace vocabulary as the key art.
+function EntranceStingBlock({
+  cityId,
+  cityName,
+  stingIdea,
+  campaignContext,
+  accent,
+}: {
+  cityId: string;
+  cityName: string;
+  stingIdea: string;
+  campaignContext: string;
+  accent: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [stingUrl, setStingUrl] = useState<string | null>(null);
+  const [trace, setTrace] = useState<{ model: string; cached: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await generateEntranceSting(cityId, cityName, stingIdea, campaignContext);
+      setStingUrl(result.sting_url);
+      setTrace(result.generation_trace);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      {!stingUrl && (
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg border border-ink/15 px-3 py-1.5 font-sans text-[11.5px] font-medium text-ink outline-none transition-colors hover:border-gold hover:text-gold focus-visible:ring-2 focus-visible:ring-gold/50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <Music4 size={12} aria-hidden />}
+          {loading ? "Composing with Lyria…" : "Generate this sting"}
+        </button>
+      )}
+      {error && <p className="mt-2 font-sans text-[11px] text-red-300">Couldn't compose: {error}</p>}
+      {stingUrl && (
+        <div className="flex items-center gap-2.5">
+          <AudioPlayButton src={stingUrl} accent={accent} />
+          <div>
+            <p className="font-sans text-[12px] font-medium text-ink">Entrance sting — generated from this cue</p>
+            {trace && (
+              <p className="font-mono text-[9.5px] uppercase tracking-[0.1em] text-ink-muted">
+                {trace.model} · {trace.cached ? "cached" : "freshly composed"}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) {
   const { localDelight, pronunciationAudio, brief } = data;
   return (
@@ -1367,6 +1432,15 @@ function DelightTab({ data, accent }: { data: CityDetailData; accent: string }) 
               <li key={i} className="font-sans text-[13px] leading-relaxed text-ink">{m}</li>
             ))}
           </ul>
+          {localDelight.music_or_remix_ideas.length > 0 && (
+            <EntranceStingBlock
+              cityId={data.stop.city_id}
+              cityName={data.stop.city_name}
+              stingIdea={localDelight.music_or_remix_ideas[0]}
+              campaignContext={`${data.campaign.genre} ${data.campaign.campaign_type.replace(/_/g, " ")}`}
+              accent={accent}
+            />
+          )}
         </div>
         {brief?.delight_card_url && (
           <a

@@ -15,6 +15,24 @@ export function getCampaignOverview(campaignId: string) {
   return getJson<CampaignOverview>(`/api/campaigns/${campaignId}/overview`);
 }
 
+// Turn the Delight Card's entrance-cue text into a real Lyria music clip.
+// Slow path (real music generation, ~10-30s fresh; instant when cached).
+export async function generateEntranceSting(
+  cityId: string,
+  cityName: string,
+  stingIdea: string,
+  campaignContext: string
+) {
+  const res = await fetch("/api/entrance-sting", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ city_id: cityId, city_name: cityName, sting_idea: stingIdea, campaign_context: campaignContext }),
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!res.ok) throw new Error(`entrance sting failed: ${res.status}`);
+  return res.json() as Promise<{ sting_url: string; generation_trace: { prompt: string; model: string; cached: boolean } }>;
+}
+
 // Resolve a campaigner-named custom metric for a city via live search --
 // slow path (Parallel + Gemini), fetched on demand from the city page.
 export async function getLiveMetric(cityName: string, metric: string) {

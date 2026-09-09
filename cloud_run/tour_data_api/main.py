@@ -79,7 +79,11 @@ _parallel_client = Parallel(api_key=_PARALLEL_API_KEY) if _PARALLEL_API_KEY else
 # gracefully (the phrase's text is still shown) rather than blocking a brief.
 _GEMINI_TTS_MODEL = os.environ.get("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
 _GEMINI_TTS_VOICE = os.environ.get("GEMINI_TTS_VOICE", "Kore")
-_GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+# gemini-3-pro-image resolves on the GLOBAL Vertex endpoint only (verified
+# live 2026-09-09; 404 on us-central1) and returns interleaved TEXT+IMAGE
+# parts -- _generate_style_moodboard_png handles both.
+_GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3-pro-image")
+_LYRIA_MODEL = os.environ.get("LYRIA_MODEL", "lyria-002")
 _DELIGHT_CARD_BUCKET = os.environ.get("DELIGHT_CARD_BUCKET")
 _storage_client = storage.Client() if _DELIGHT_CARD_BUCKET else None
 
@@ -430,9 +434,12 @@ def _moodboard_prompt(city_name: str, style_notes: str, campaign_context: str | 
 
 
 def _generate_style_moodboard_png(city_name: str, style_notes: str, campaign_context: str | None = None) -> bytes:
+    # Global endpoint: gemini-3-pro-image is not served regionally (verified
+    # live), and it interleaves TEXT+IMAGE parts -- scan for the image part
+    # instead of assuming parts[0].
     url = (
-        f"https://{_VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
-        f"{_GCP_PROJECT}/locations/{_VERTEX_LOCATION}/publishers/google/models/"
+        f"https://aiplatform.googleapis.com/v1/projects/"
+        f"{_GCP_PROJECT}/locations/global/publishers/google/models/"
         f"{_GEMINI_IMAGE_MODEL}:generateContent"
     )
     prompt = _moodboard_prompt(city_name, style_notes, campaign_context)
@@ -441,14 +448,16 @@ def _generate_style_moodboard_png(city_name: str, style_notes: str, campaign_con
         headers={"Authorization": f"Bearer {_get_access_token()}", "Content-Type": "application/json"},
         json={
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"responseModalities": ["IMAGE"]},
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
         },
-        timeout=60,
+        timeout=120,
     )
     res.raise_for_status()
     data = res.json()
-    inline = data["candidates"][0]["content"]["parts"][0]["inlineData"]
-    return base64.b64decode(inline["data"])
+    for part in data["candidates"][0]["content"]["parts"]:
+        if "inlineData" in part:
+            return base64.b64decode(part["inlineData"]["data"])
+    raise ValueError("image model returned no image part")
 
 
 def _get_or_generate_style_moodboard(
@@ -459,7 +468,7 @@ def _get_or_generate_style_moodboard(
     # call and the upload, while two different campaigns in the same city
     # hash to different artifacts -- same caching shape as pronunciation
     # audio above.
-    digest = hashlib.sha256(f"{city_id}:{campaign_context or ''}:{style_notes}".encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha256(f"{_GEMINI_IMAGE_MODEL}:{city_id}:{campaign_context or ''}:{style_notes}".encode("utf-8")).hexdigest()[:16]
     bucket = _storage_client.bucket(_DELIGHT_CARD_BUCKET)
     blob = bucket.blob(f"style-moodboards/{digest}.png")
     cached = blob.exists()
@@ -2578,6 +2587,88 @@ _LIVE_SEARCH_PROMPT_RULE = (
     "a short 3-8 word keyword phrase in live_search_query -- your own knowledge is months old and "
     "must never be presented as current. For evergreen questions keep needs_live_search=false.\n\n"
 )
+
+
+class StingIdeaValidationError(ValueError):
+    """The entrance-cue idea flows into a Lyria music prompt -- same
+    injection hygiene as every user-influenced prompt field."""
+
+
+_STING_IDEA_ALLOWED = re.compile(r"^[\w\s'%\.,\-/]{3,160}$")
+
+
+def _validate_sting_idea(idea) -> str:
+    collapsed = " ".join(str(idea or "").split())
+    if not collapsed or not _STING_IDEA_ALLOWED.match(collapsed):
+        raise StingIdeaValidationError("sting_idea failed validation")
+    return collapsed
+
+
+def _sting_prompt(city_name: str, sting_idea: str, campaign_context: str | None) -> str:
+    event_line = f" for a {campaign_context}" if campaign_context else ""
+    return (
+        f"A short, high-energy instrumental entrance sting{event_line}, played as the artist "
+        f"walks on stage in {city_name}: {sting_idea}. Cinematic, punchy, builds fast to a "
+        f"peak. Instrumental only, no vocals."
+    )
+
+
+def _generate_entrance_sting_wav(prompt: str) -> bytes:
+    url = (
+        f"https://{_VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/"
+        f"{_GCP_PROJECT}/locations/{_VERTEX_LOCATION}/publishers/google/models/"
+        f"{_LYRIA_MODEL}:predict"
+    )
+    res = requests.post(
+        url,
+        headers={"Authorization": f"Bearer {_get_access_token()}", "Content-Type": "application/json"},
+        json={"instances": [{"prompt": prompt}], "parameters": {"sample_count": 1}},
+        timeout=120,
+    )
+    res.raise_for_status()
+    return base64.b64decode(res.json()["predictions"][0]["bytesBase64Encoded"])
+
+
+@app.post("/generate_entrance_sting")
+def generate_entrance_sting():
+    """Turns the Delight Card's text-only "Entrance Cue" into a real,
+    playable music clip via Lyria on Vertex AI -- prompt grounded in the
+    cue idea + campaign context, content-hash cached in Cloud Storage like
+    pronunciation audio and key art, with the same honest generation trace
+    (exact prompt, model, cached-vs-fresh)."""
+    payload = request.get_json(silent=True) or {}
+    campaign_context = payload.get("campaign_context")
+    try:
+        city_name = _validate_place_name(payload.get("city_name") or "", "city_name")
+        sting_idea = _validate_sting_idea(payload.get("sting_idea"))
+    except (PlaceNameValidationError, StingIdeaValidationError) as e:
+        return jsonify({"error": str(e)}), 400
+    city_id = payload.get("city_id")
+    if not city_id:
+        return jsonify({"error": "missing required field: city_id"}), 400
+    if not _storage_client:
+        return jsonify({"error": "DELIGHT_CARD_BUCKET is not configured on this service"}), 500
+
+    prompt = _sting_prompt(city_name, sting_idea, campaign_context)
+    digest = hashlib.sha256(f"{_LYRIA_MODEL}:{city_id}:{prompt}".encode("utf-8")).hexdigest()[:16]
+    bucket = _storage_client.bucket(_DELIGHT_CARD_BUCKET)
+    blob = bucket.blob(f"entrance-stings/{digest}.wav")
+    cached = blob.exists()
+    if not cached:
+        try:
+            wav = _generate_entrance_sting_wav(prompt)
+        except (requests.HTTPError, KeyError, ValueError) as e:
+            return jsonify({"error": f"entrance sting generation failed: {e}"}), 502
+        blob.upload_from_string(wav, content_type="audio/wav")
+    return jsonify({
+        "city_id": city_id,
+        "sting_url": blob.public_url,
+        "generation_trace": {
+            "prompt": prompt,
+            "model": _LYRIA_MODEL,
+            "cached": cached,
+        },
+    })
 
 
 class MetricNameValidationError(ValueError):
