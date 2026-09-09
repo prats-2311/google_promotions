@@ -96,3 +96,11 @@ def test_phrase_pronunciation_audio_renders_when_present():
     })
     assert 'preload="none" src="https://x/namaste.wav">' in html
     assert html.count("<audio") == 1
+
+
+def test_uploaded_artifacts_revalidate_instead_of_caching_an_hour(mock_storage_client):
+    """GCS defaults public objects to max-age=3600 -- a planner who
+    regenerates a card or tour book would keep seeing the hour-old copy.
+    no-cache makes every view revalidate (304s are cheap)."""
+    main._upload_html("<html></html>", "delight-cards/x.html")
+    assert mock_storage_client.cache_control == "no-cache"

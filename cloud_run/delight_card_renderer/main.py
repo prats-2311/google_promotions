@@ -64,6 +64,9 @@ def _upload_html(html: str, object_path: str) -> str:
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(object_path)
+    # GCS defaults public objects to max-age=3600 -- without this, a planner
+    # who regenerates an artifact keeps being served the hour-old copy.
+    blob.cache_control = "no-cache"
     blob.upload_from_string(html, content_type="text/html")
     return blob.public_url
 
