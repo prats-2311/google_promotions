@@ -1,6 +1,25 @@
-# Devpost submission — content to paste in
+# Devpost submission — status of record
 
-Matches the actual Devpost form steps for this project (`Tour Intelligence — Agentic Tour & Promo Intelligence OS`, project id 1420693). Fields marked **[CONFIRM]** are facts about you/your team, not the project — don't paste those without checking them first.
+Project: `Tour Intelligence — Agentic Tour & Promo Intelligence OS`, project id 1420693,
+https://devpost.com/software/tour-intelligence-agentic-tour-promo-intelligence-os
+
+**Pushed live via the Devpost MCP on 2026-09-09** — do not re-paste the sections below by hand; they document what's already on the page:
+
+- **About/description**: LIVE (project version 5). Rewritten around: the problem → problem size (PwC/Pollstar/CMI figures, incl. the +12.3% global vs +0.1% NA growth stat) → 5 key design insights → what it does → 3 embedded architecture diagrams with captions → Parallel surface-per-task table → Gemini leverage list → build/challenges/learnings/next. Test count updated to the verified 413 (391 pytest + 22 vitest).
+- **Architecture diagrams**: 3 hand-built Premiere Noir SVG renders, hosted publicly and embedded inline (verified rendering on the live page):
+  - https://storage.googleapis.com/liifecalling-academy-delight-cards/media/diagram_system_architecture.png
+  - https://storage.googleapis.com/liifecalling-academy-delight-cards/media/diagram_grounding_pipeline.png
+  - https://storage.googleapis.com/liifecalling-academy-delight-cards/media/diagram_ai_control_layers.png
+- **Gallery**: 12 captioned images (dashboard, 3 diagrams, tour book cover + London chapter, key-art trace, Mumbai delight card, live-search chat, per-stop metrics, edit-chat restore, culture tab). Screenshot copies mirrored at `.../media/shot-*.jpg`.
+- **Thumbnail**: custom square Premiere Noir title card, uploaded.
+- **Links + built-with tags**: LIVE (25 tags, incl. webmcp + lyria).
+
+**Still required before `submit_project`** (deliberately left to the user):
+1. Record + upload the demo video (script: `demo_video_script.md`), then set `video_url`.
+2. Answer the **[CONFIRM]** personal fields at the bottom of this file.
+3. Give the explicit go-ahead to submit.
+
+Fields marked **[CONFIRM]** are facts about you/your team, not the project — don't submit without checking them first.
 
 ---
 
@@ -86,7 +105,7 @@ Getting a genuine two-way agent handoff working (not just a linear pipeline) req
 - Live Parallel-backed research for any city, not just the 5 curated demo cities
 - The one-click Executive Tour Book — the boss-facing campaign PDF, assembled from grounded data with generated key art
 - Honest AI transparency end to end: real step traces for briefs AND the exact image-generation prompts, never reconstructed reasoning
-- 392 automated tests (pytest + vitest), TDD throughout — including red-first tests for security fixes
+- 413 automated tests (pytest + vitest), TDD throughout — including red-first tests for security fixes
 - A dedicated MCP server exposing our tools to external agents
 
 ## What we learned
