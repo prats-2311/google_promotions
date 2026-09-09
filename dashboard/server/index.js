@@ -616,7 +616,15 @@ app.post("/api/tour-book", async (req, res) => {
               : null,
           delight: delight
             ? {
-                local_phrases: delight.local_phrases ?? [],
+                // Attach each phrase's synthesized pronunciation clip (stored
+                // on the brief by the driver) so the book gets the same
+                // playback the city page has.
+                local_phrases: (delight.local_phrases ?? []).map((p) => {
+                  const audio = (safeParse(brief?.pronunciation_audio_json) ?? []).find?.(
+                    (a) => a?.phrase === p.phrase
+                  );
+                  return audio?.audio_url ? { ...p, audio_url: audio.audio_url } : p;
+                }),
                 crowd_moment_suggestions: delight.crowd_moment_suggestions ?? [],
                 music_or_remix_ideas: delight.music_or_remix_ideas ?? [],
               }

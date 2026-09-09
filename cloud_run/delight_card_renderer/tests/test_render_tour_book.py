@@ -102,3 +102,22 @@ def test_tour_book_embeds_entrance_sting_when_present():
     p["cities"][0]["delight"] = {"local_phrases": [], "crowd_moment_suggestions": [], "music_or_remix_ideas": ["a sting"]}
     html = main._render_tour_book(p)
     assert '<audio controls preload="none" src="https://x/sting.wav">' in html
+
+
+def test_tour_book_embeds_phrase_pronunciation_audio_when_present():
+    """Each local phrase with a synthesized pronunciation clip gets its own
+    inline player -- same artifact-parity rule as the entrance sting."""
+    p = _payload()
+    p["cities"][0]["delight"] = {
+        "local_phrases": [
+            {"phrase": "Namaste Mumbai!", "phonetic": "nuh-mas-tay", "meaning": "Hello, Mumbai!",
+             "audio_url": "https://x/namaste.wav"},
+            {"phrase": "Kya haal hai?", "meaning": "How are you?"},
+        ],
+        "crowd_moment_suggestions": [],
+        "music_or_remix_ideas": [],
+    }
+    html = main._render_tour_book(p)
+    assert 'preload="none" src="https://x/namaste.wav">' in html
+    # the phrase without audio renders fine and gains no player
+    assert html.count("<audio") == 1
