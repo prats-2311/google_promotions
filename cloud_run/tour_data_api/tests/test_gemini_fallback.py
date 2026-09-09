@@ -103,3 +103,38 @@ def test_all_attempts_exhausted_raises_last_error(monkeypatch):
     except requests.HTTPError:
         pass
     assert mock_post.call_count == 3
+
+
+def test_read_timeout_on_primary_skips_straight_to_fallback(monkeypatch):
+    """A network read timeout means the primary model just burned its full
+    timeout budget -- retrying the same model would double the latency for a
+    caller already waiting. Go straight to the fallback instead. Live
+    regression 2026-09-09: Vertex global-endpoint slowness turned every
+    /discover_venues into an uncaught Timeout -> 500."""
+    good = _fake_response(200, json_body=_gemini_payload('{"etiquette_notes": "be polite"}'))
+    mock_post = MagicMock(side_effect=[requests.Timeout("read timed out"), good])
+    monkeypatch.setattr(main.requests, "post", mock_post)
+    monkeypatch.setattr(main.time, "sleep", lambda *_: None)
+
+    result = main._call_gemini_json("prompt", _SCHEMA)
+
+    assert result == {"etiquette_notes": "be polite"}
+    assert mock_post.call_count == 2  # no second primary attempt
+    urls_called = [c[0][0] for c in mock_post.call_args_list]
+    assert main._GEMINI_MODEL in urls_called[0]
+    assert main._GEMINI_FALLBACK_MODEL in urls_called[1]
+
+
+def test_timeout_on_both_models_raises_the_timeout(monkeypatch):
+    mock_post = MagicMock(side_effect=requests.Timeout("read timed out"))
+    monkeypatch.setattr(main.requests, "post", mock_post)
+    monkeypatch.setattr(main.time, "sleep", lambda *_: None)
+
+    try:
+        main._call_gemini_json("prompt", _SCHEMA)
+        raised = False
+    except requests.Timeout:
+        raised = True
+
+    assert raised
+    assert mock_post.call_count == 2  # one attempt per model, no wasted retry

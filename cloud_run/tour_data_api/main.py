@@ -284,7 +284,13 @@ def _call_gemini_json(prompt: str, response_schema: dict) -> dict:
     for the bar every attempt's output has to clear before being accepted."""
     last_error: Exception | None = None
     attempts = [(_GEMINI_MODEL, 0), (_GEMINI_MODEL, 2), (_GEMINI_FALLBACK_MODEL, 0)]
+    # A model that just timed out burned its whole timeout budget -- retrying
+    # it would double the caller's wait for the same likely outcome, so its
+    # remaining attempts are skipped and the fallback gets the next shot.
+    timed_out_models: set[str] = set()
     for model, backoff_seconds in attempts:
+        if model in timed_out_models:
+            continue
         if backoff_seconds:
             time.sleep(backoff_seconds)
         try:
@@ -295,6 +301,9 @@ def _call_gemini_json(prompt: str, response_schema: dict) -> dict:
             status = e.response.status_code if e.response is not None else None
             if status not in _GEMINI_RETRYABLE_STATUS_CODES:
                 raise
+            last_error = e
+        except (requests.Timeout, requests.ConnectionError) as e:
+            timed_out_models.add(model)
             last_error = e
         except (KeyError, ValueError, TypeError) as e:
             # Malformed/incomplete response shape -- not necessarily transient,

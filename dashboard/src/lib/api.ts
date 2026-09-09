@@ -171,7 +171,7 @@ export async function getLocalCrewVendors(cityName: string, country?: string | n
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ city_name: cityName, ...(country ? { country } : {}) }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(75000),
   });
   if (!res.ok) throw new Error(`local crew & vendors lookup failed: ${res.status}`);
   return res.json() as Promise<LocalCrewVendorsResponse>;
@@ -183,7 +183,7 @@ export async function discoverVenues(cityName: string, country?: string | null) 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ city_name: cityName, ...(country ? { country } : {}) }),
     // Real Parallel Search + Gemini synthesis, not instant.
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(75000),
   });
   if (!res.ok) throw new Error(`discover venues failed: ${res.status}`);
   return res.json() as Promise<VenueDiscoveryResponse>;
@@ -194,7 +194,7 @@ export async function getVisaRequirements(artistNationality: string, destination
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ artist_nationality: artistNationality, destination_country: destinationCountry }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(75000),
   });
   if (!res.ok) throw new Error(`visa requirements lookup failed: ${res.status}`);
   return res.json() as Promise<VisaRequirements>;
@@ -205,7 +205,7 @@ export async function getSeasonalWeatherRisk(cityName: string, monthOrDate: stri
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ city_name: cityName, month_or_date: monthOrDate, ...(country ? { country } : {}) }),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(75000),
   });
   if (!res.ok) throw new Error(`seasonal weather risk lookup failed: ${res.status}`);
   return res.json() as Promise<SeasonalWeatherRisk>;

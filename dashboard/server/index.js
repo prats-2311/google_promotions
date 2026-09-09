@@ -869,6 +869,7 @@ app.post("/api/local-crew-vendors", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(75000),
     });
     res.json(result);
   } catch (err) {
@@ -882,6 +883,7 @@ app.post("/api/discover-venues", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(75000),
     });
     res.json(result);
   } catch (err) {
@@ -895,6 +897,7 @@ app.post("/api/visa-requirements", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(75000),
     });
     res.json(result);
   } catch (err) {
@@ -908,6 +911,7 @@ app.post("/api/seasonal-weather-risk", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(75000),
     });
     res.json(result);
   } catch (err) {
