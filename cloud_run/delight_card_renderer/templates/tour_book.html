@@ -337,6 +337,7 @@
 
       {% if c.venue %}
       <div class="section-label"><span class="mono" style="color: {{ c.accent }};">Venue &amp; Logistics</span><span class="rule"></span></div>
+      {% if c.venue.venue_name %}<p class="kv"><b>Venue:</b> {{ c.venue.venue_name }}</p>{% endif %}
       {% if c.venue.capacity %}<p class="kv"><b>Capacity:</b> {{ c.venue.capacity }}</p>{% endif %}
       {% if c.venue.typical_event_format %}<p class="kv"><b>Typical format:</b> {{ c.venue.typical_event_format }}</p>{% endif %}
       {% if c.venue.logistics_notes %}<p class="kv"><b>Logistics:</b> <span class="subtle">{{ c.venue.logistics_notes }}</span></p>{% endif %}

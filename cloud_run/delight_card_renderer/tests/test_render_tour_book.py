@@ -129,3 +129,10 @@ def test_itinerary_venue_cell_prefers_extracted_venue_name_over_url():
     p["cities"][0]["venue"] = {"venue_name": "The O2 Arena", "capacity": "20,000"}
     html = main._render_tour_book(p)
     assert '<a href="https://grokipedia.com/page/whatever">The O2 Arena</a>' in html
+
+
+def test_chapter_logistics_section_leads_with_the_venue_name():
+    p = _payload()
+    p["cities"][0]["venue"] = {"venue_name": "Shanmukhananda Hall", "capacity": "3,000 seats"}
+    html = main._render_tour_book(p)
+    assert "<b>Venue:</b> Shanmukhananda Hall" in html
