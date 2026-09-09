@@ -1518,6 +1518,10 @@ def extract_venue_info():
     return jsonify({
         "source": "parallel_extract",
         "citations": citations,
+        # Echo the caller-supplied display name -- extraction is where it
+        # would otherwise be lost, and downstream artifacts (tour book
+        # itinerary) need a human label, not a source URL.
+        **({"venue_name": venue_name} if venue_name else {}),
         **synthesized,
     })
 

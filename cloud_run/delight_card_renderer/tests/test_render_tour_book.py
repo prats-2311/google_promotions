@@ -121,3 +121,11 @@ def test_tour_book_embeds_phrase_pronunciation_audio_when_present():
     assert 'preload="none" src="https://x/namaste.wav">' in html
     # the phrase without audio renders fine and gains no player
     assert html.count("<audio") == 1
+
+
+def test_itinerary_venue_cell_prefers_extracted_venue_name_over_url():
+    p = _payload()
+    p["cities"][0]["venue_url"] = "https://grokipedia.com/page/whatever"
+    p["cities"][0]["venue"] = {"venue_name": "The O2 Arena", "capacity": "20,000"}
+    html = main._render_tour_book(p)
+    assert '<a href="https://grokipedia.com/page/whatever">The O2 Arena</a>' in html

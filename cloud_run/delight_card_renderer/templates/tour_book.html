@@ -250,7 +250,7 @@
             <td><span class="citydot" style="background: {{ c.accent }};"></span><b>{{ c.city_name }}</b>{% if c.tier %} <span class="subtle">· {{ c.tier }}</span>{% endif %}</td>
             <td class="num">{{ c.stop_date }}</td>
             <td>{{ c.event_format or "—" }}</td>
-            <td>{% if c.venue_url %}<a href="{{ c.venue_url }}">{{ c.venue_url|replace("https://","")|replace("http://","")|truncate(34) }}</a>{% else %}—{% endif %}</td>
+            <td>{% if c.venue_url %}<a href="{{ c.venue_url }}">{{ (c.venue and c.venue.venue_name) or c.venue_url|replace("https://","")|replace("http://","")|truncate(34) }}</a>{% else %}—{% endif %}</td>
             <td class="num" style="text-align:right; font-weight: 700;">{{ c.score }}</td>
           </tr>
           {% endfor %}

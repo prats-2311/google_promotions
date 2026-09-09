@@ -143,3 +143,17 @@ def test_gemini_synthesis_failure_returns_502(client, mock_parallel_client, monk
         "urls": ["https://example.com/venue"], "city_name": "London",
     })
     assert res.status_code == 502
+
+
+def test_extract_echoes_venue_name_into_response(client, mock_parallel_client, monkeypatch):
+    """The chosen venue's display name would otherwise be lost the moment
+    extraction runs -- downstream artifacts (tour book itinerary) need a
+    human label, not a source URL."""
+    monkeypatch.setattr(main, "_call_gemini_json", lambda *a, **k: _default_synthesis())
+    res = client.post("/extract_venue_info", json={
+        "urls": ["https://example.com/venue"],
+        "city_name": "London",
+        "venue_name": "The O2 Arena",
+    })
+    assert res.status_code == 200
+    assert res.get_json()["venue_name"] == "The O2 Arena"
