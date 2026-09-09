@@ -131,6 +131,10 @@
   .phrase-card__phonetic { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10.5px; letter-spacing: 0.02em; }
   .phrase-card__meaning { font-style: italic; }
   .phrase-audio { width: 100%; height: 26px; margin-top: 8px; }
+  .venue { background: var(--well); border-radius: 12px; padding: 12px 16px; }
+  .venue__name { margin: 0; font-size: 14.5px; font-weight: 600; }
+  .venue__cap { color: var(--muted); font-weight: 500; }
+  .venue__line { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
 
   /* Lean Into / Avoid share one row -- halves the card's length and lets
      the do/don't contrast read side by side. */
@@ -336,6 +340,21 @@
         </p>
         {% for q in fan_questions %}<div class="q">{{ q }}</div>{% endfor %}
       </div>
+
+      {% if venue %}
+      <div class="section">
+        <p class="section__label">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+          The Venue
+        </p>
+        <div class="venue">
+          <p class="venue__name">{{ venue.venue_name or "Confirmed venue" }}{% if venue.capacity %} <span class="venue__cap">· {{ venue.capacity }}</span>{% endif %}</p>
+          {% if venue.typical_event_format %}<p class="venue__line">{{ venue.typical_event_format }}</p>{% endif %}
+          {% if venue.nearest_airport %}<p class="venue__line">✈ {{ venue.nearest_airport.name }} ({{ venue.nearest_airport.distance_or_travel_time }})</p>{% endif %}
+          {% if venue.nearest_railway_station %}<p class="venue__line">🚉 {{ venue.nearest_railway_station.name }} ({{ venue.nearest_railway_station.distance_or_travel_time }})</p>{% endif %}
+        </div>
+      </div>
+      {% endif %}
     </div>
 
     <div class="card__footer">

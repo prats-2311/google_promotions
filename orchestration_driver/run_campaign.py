@@ -655,6 +655,10 @@ def run_city(
     )
     local_phrases = _phrases_with_audio(local_phrases, pronunciation_audio)
 
+    # Fetched BEFORE the card render (same ordering lesson as pronunciation
+    # audio) so the card can show the venue strip, not just the BigQuery row.
+    venue_notes_json = _fetch_venue_notes(venue_url, city_name, tour_data_token) if venue_url else None
+
     render_payload = {
         "brief_id": brief_id,
         "campaign_title": campaign_title,
@@ -666,6 +670,7 @@ def run_city(
         "grounding_check_passed": True,
         "local_phrases": local_phrases,
         "talent_brief": _brief_sections(collected["talent_brief_json"]),
+        "venue": json.loads(venue_notes_json) if venue_notes_json else None,
     }
     delight_token = _auth_token("identity", audience=DELIGHT_RENDERER)
     render_resp = requests.post(
@@ -678,8 +683,6 @@ def run_city(
     style_moodboard_url = (
         _generate_style_moodboard(city_id, city_name, style_notes, tour_data_token) if style_notes else None
     )
-
-    venue_notes_json = _fetch_venue_notes(venue_url, city_name, tour_data_token) if venue_url else None
 
     insert_payload = {
         "brief_id": brief_id,

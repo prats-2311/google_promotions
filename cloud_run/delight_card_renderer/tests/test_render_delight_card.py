@@ -104,3 +104,27 @@ def test_uploaded_artifacts_revalidate_instead_of_caching_an_hour(mock_storage_c
     no-cache makes every view revalidate (304s are cheap)."""
     main._upload_html("<html></html>", "delight-cards/x.html")
     assert mock_storage_client.cache_control == "no-cache"
+
+
+def test_venue_section_renders_when_notes_present():
+    """The card gains a compact venue strip (name, capacity, commute) when
+    the brief carries extracted venue notes -- absent notes, no section."""
+    html = main._render_html({
+        "brief_id": "b1",
+        "city_id": "mumbai",
+        "venue": {
+            "venue_name": "Shanmukhananda Hall",
+            "capacity": "3,000 seats",
+            "nearest_airport": {"name": "CSMIA", "distance_or_travel_time": "8 km"},
+            "nearest_railway_station": {"name": "King's Circle", "distance_or_travel_time": "1 km"},
+        },
+    })
+    assert "Shanmukhananda Hall" in html
+    assert "3,000 seats" in html
+    assert "CSMIA" in html
+    assert "The Venue" in html
+
+
+def test_no_venue_section_without_notes():
+    html = main._render_html({"brief_id": "b1", "city_id": "mumbai"})
+    assert "The Venue" not in html
